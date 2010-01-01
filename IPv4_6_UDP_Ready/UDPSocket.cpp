@@ -97,8 +97,8 @@ bool UDPSocket::Start(const std::string listenport, bool broadcastflag)
                 freeaddrinfo(ret);
                 return false;
             }
-            int opt = 1;
-            if(setsockopt(m_RxSockets[IPV4Network], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(option)) == -1)
+            int option = 1;
+            if(setsockopt(m_RxSockets[IPV4Network], SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option)) == -1)
             {
                 Stop();
                 freeaddrinfo(ret);
@@ -123,19 +123,13 @@ bool UDPSocket::Start(const std::string listenport, bool broadcastflag)
                 return false;
             }
             opt = 1;
-            if(setsockopt(m_RxSockets[IPV6Network], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(option)) == -1)
+            if(setsockopt(m_RxSockets[IPV6Network], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
             {
                 Stop();
                 freeaddrinfo(ret);
                 return false;
             }
-            opt = 1;
-            if(setsockopt(m_RxSockets[IPV6Network], IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) == -1)
-            {
-                Stop();
-                freeaddrinfo(ret);
-                return false;
-            }
+            setsockopt(m_RxSockets[IPV6Network], IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)); 
             if(bind(m_RxSockets[IPV6Network], iter->ai_addr, iter->ai_addrlen) != 0) 
             {
                 Stop();
@@ -267,26 +261,30 @@ void UDPSocket::Send(const std::string address, const std::string port, const st
         {
             if(interface.compare(""))
             {
-                /*if(setsockopt(m_TxSockets[IPV4Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
+                if(setsockopt(m_TxSockets[IPV4Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
                 {
                     freeaddrinfo(ret);
                     return;
-                }*/
+                }
             }
             std::cout<<"Send IPv4"<<std::endl;
             sendto(m_TxSockets[IPV4Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
         }
         else if(iter->ai_family == AF_INET6)
         {
+            char str[INET6_ADDRSTRLEN];
             if(interface.compare(""))
             {
-                /*if(setsockopt(m_TxSockets[IPV6Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
+                if(setsockopt(m_TxSockets[IPV6Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
                 {
                     freeaddrinfo(ret);
                     return;
-                }*/
+                }
             }
-            std::cout<<"Send IPv6"<<std::endl;
+            if (inet_ntop(iter->ai_family, ((sockaddr_in6*)iter->ai_addr)->sin6_addr.s6_addr, str, INET6_ADDRSTRLEN) == NULL) {
+                return;
+            }
+            std::cout<<"Send IPv6"<<str<<std::endl;
             sendto(m_RxSockets[IPV6Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
         }
     }
