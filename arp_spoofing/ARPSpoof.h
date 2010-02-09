@@ -10,7 +10,8 @@ enum IPVERSION : unsigned char
     IPV6
 };
 
-class ARPSpoof{
+class ARPSpoof
+{
 private:/*PRIVATE STATIC VARIABLE*/
     static ARPSpoof* g_Instance;
 public:/*PUBLIC STATIC FUNCTION*/

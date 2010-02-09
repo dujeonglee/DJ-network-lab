@@ -8,7 +8,7 @@ LIBRARY :=
 CPP := g++
 TARGET = arp_spoof_attck
 
-all : DEBUG
+all : debug
 
 $(TARGET) : $(OBJECTS)
 	$(CPP) -o $@  $^
@@ -19,10 +19,10 @@ $(TARGET) : $(OBJECTS)
 clean :
 	rm -rf $(OBJECTS) $(TARGET) *~
 
-DEBUG : CPPFLAGS := -g -c -Wall -Werror -std=c++11
-DEBUG : $(TARGET)
+debug : CPPFLAGS := -g -c -Wall -Werror -std=c++0x
+debug : $(TARGET)
 
 
-RELEASE : CPPFLAGS := -O3 -c -Wall -Werror -std=c++11
-RELEASE : $(TARGET)
+release : CPPFLAGS := -O3 -c -Wall -Werror -std=c++0x
+release : $(TARGET)
 
