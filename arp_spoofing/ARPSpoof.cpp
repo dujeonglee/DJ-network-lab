@@ -39,7 +39,52 @@ struct icmpv6hdr
         unsigned char data_8[4];
     }
     icmpv6_dataun;
-};
+}__attribute__((packed));
+
+struct RouterAdvertisement
+{
+    unsigned char HopLimit;
+    unsigned char Flag;
+    unsigned short Lifetime;
+    unsigned int ReachableTime;
+    unsigned int RetransmissionTime;
+}__attribute__((packed));
+
+struct TLV
+{
+    unsigned char Type;
+    unsigned char Length;
+    unsigned char Value[1];
+}__attribute__((packed));
+
+enum ICMPOptions
+{
+    Source_Link_Layer_Address = 1,
+    Target_Link_Layer_Address,
+    Prefix_Information,
+    Redirected_Header,
+    MTU
+}__attribute__((packed));
+
+struct ICMPOptionLinkLayerAddress
+{
+    unsigned char Type;
+    unsigned char Length;
+    unsigned char Address[6];
+}__attribute__((packed));
+
+struct ICMPOptionPrefixInformation
+{
+    unsigned char Type;
+    unsigned char Length;
+    unsigned char PrefixLength;
+    unsigned char Flag;
+    unsigned int ValidLifetime;
+    unsigned int PreferredLifetime;
+    unsigned int Reserved;
+    unsigned char Prefix[16];
+}__attribute__((packed));
+
 
 ARPSpoof* ARPSpoof::g_Instance = new ARPSpoof();
 
@@ -180,9 +225,39 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                 {
                     continue;
                 }
-                printf("ICMP Type %hhu\n", ICMPv6Hdr->icmpv6_type);
-                printf("ICMP Code %hhu\n", ICMPv6Hdr->icmpv6_code);
-                printf("ICMP CKSUM %hu\n", ICMPv6Hdr->icmpv6_cksum);
+                if(ICMPv6Hdr->icmpv6_type == 133)
+                {
+                    printf("Router Solicitation\n");
+                }
+                else if(ICMPv6Hdr->icmpv6_type == 134)
+                {
+                    int parsingposition = 0;
+                    printf("Router Advertisement\n");
+                    printf("ICMP Type %hhu\n", ICMPv6Hdr->icmpv6_type);
+                    printf("ICMP Code %hhu\n", ICMPv6Hdr->icmpv6_code);
+                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->icmpv6_cksum);
+                    RouterAdvertisement* payload = (RouterAdvertisement*)ICMPv6Hdr->icmpv6_dataun.data_8;
+                    printf("Hoplimit %hhu\n", payload->HopLimit);
+                    printf("Flag %hhx\n", payload->Flag);
+                    printf("Lifetime %hu s\n", ntohs(payload->Lifetime));
+                    printf("ReachableTime %u ms\n", ntohl(payload->ReachableTime));
+                    printf("RetransmissionTime %u ms\n", ntohl(payload->RetransmissionTime));
+                    parsingposition += 16;
+                    while(((unsigned char*)ICMPv6Hdr + parsingposition) < ((unsigned char*)m_RxBuffer + received_bytes))
+                    {
+                        TLV* tlv = (TLV*)((unsigned char*)ICMPv6Hdr + parsingposition);
+                        printf("Type: %hhu\n", tlv->Type);
+                        parsingposition += tlv->Length*8;
+                    }
+                }
+                else if(ICMPv6Hdr->icmpv6_type == 135)
+                {
+                    printf("Neighbor Solicitation\n");
+                }
+                else if(ICMPv6Hdr->icmpv6_type == 136)
+                {
+                    printf("Neighbor Advertisement\n");
+                }
             }
         }
     }
