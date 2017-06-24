@@ -99,7 +99,7 @@ UDPSocket::UDPSocket(const std::string port)
                         case IPV4Network:
                         {
                             sockaddr_in sender;
-                            int sender_length = sizeof(sender);
+                            size_t sender_length = sizeof(sender);
                             recvfrom(self->m_Sockets[i].first, buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
                             std::cout<<"Rx IPv4"<<buffer<<std::endl;
                         }
@@ -107,7 +107,7 @@ UDPSocket::UDPSocket(const std::string port)
                         case IPV6Network:
                         {
                             sockaddr_in6 sender;
-                            int sender_length = sizeof(sender);
+                            size_t sender_length = sizeof(sender);
                             recvfrom(self->m_Sockets[i].first, buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
                             std::cout<<"Rx IPv6"<<buffer<<std::endl;
                         }
