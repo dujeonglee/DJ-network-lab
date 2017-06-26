@@ -246,7 +246,50 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                     while(((unsigned char*)ICMPv6Hdr + parsingposition) < ((unsigned char*)m_RxBuffer + received_bytes))
                     {
                         TLV* tlv = (TLV*)((unsigned char*)ICMPv6Hdr + parsingposition);
-                        printf("Type: %hhu\n", tlv->Type);
+                        if(tlv->Type == Source_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("SourceLinkAddr: %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Target_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("TargetLinkAddr: %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Prefix_Information)
+                        {
+                            ICMPOptionPrefixInformation* const option = (ICMPOptionPrefixInformation*)tlv;
+                            printf("PrefixLength %hhu\n", option->PrefixLength);
+                            printf("Flag %hhu\n", option->Flag);
+                            printf("ValidLifetime %u\n", ntohl(option->ValidLifetime));
+                            printf("PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
+                            printf("Reserved %u\n", option->Reserved);
+                            for(unsigned char i = 0 ; i < 16 ; i++)
+                            {
+                                printf("%hhx:", option->Prefix[i]);
+                            }
+                            printf("\n");
+                        }
+                        else if(tlv->Type == Redirected_Header)
+                        {
+
+                        }
+                        else if(tlv->Type == MTU)
+                        {
+
+                        }
                         parsingposition += tlv->Length*8;
                     }
                 }
