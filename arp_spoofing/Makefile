@@ -19,10 +19,10 @@ $(TARGET) : $(OBJECTS)
 clean :
 	rm -rf $(OBJECTS) $(TARGET) *~
 
-DEBUG : CPPFLAGS := -g -c -Wall -Werror
+DEBUG : CPPFLAGS := -g -c -Wall -Werror -std=c++11
 DEBUG : $(TARGET)
-	sudo ./$(TARGET) wlan0 attack_ip_list.txt
 
-RELEASE : CPPFLAGS := -O0 -c -Wall -Werror
+
+RELEASE : CPPFLAGS := -O3 -c -Wall -Werror -std=c++11
 RELEASE : $(TARGET)
-	sudo ./$(TARGET) wlan0 attack_ip_list.txt
+
