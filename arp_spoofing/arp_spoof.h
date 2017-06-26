@@ -1,27 +1,9 @@
-#ifndef _ARP_SPOOF_
-#define _ARP_SPOOF_
-
-class arp_spoof{
-private:/*PRIVATE STATIC VARIABLE*/
-    static arp_spoof* _instance;
-public:/*PUBLIC STATIC FUNCTION*/
-    static arp_spoof* instance();
-private:/*PRIVATE STATIC FUNCTION*/
-
-private:/*PRIVATE CLASS VARIABLE*/
-    int _rx_socket;
-    int _tx_socket;
-    char* _rx_buffer;
-    char* _tx_buffer;
-
-private:/*PRIVATE CLASS FUNCTION*/
-    bool hw_address(const char* const ifname, unsigned char* const hw_address);
-    arp_spoof();
-    ~arp_spoof();
-
-public:
-    void do_arp_spoof(const char *ifname, const char* filename);
-
+#ifndef _ARP_SPOOF_#define _ARP_SPOOF_
+#include <utility>#include <vector>
+enum IPVERSION : unsigned char{ IPV4 = 0, IPV6};
+class ARPSpoof{private:/*PRIVATE STATIC VARIABLE*/    static ARPSpoof* g_Instance;public:/*PUBLIC STATIC FUNCTION*/    static ARPSpoof* Instance();private:/*PRIVATE STATIC FUNCTION*/
+private:/*PRIVATE CLASS VARIABLE*/    std::vector< int > m_RxSockets;    int m_TxSocket;    unsigned char m_TxBuffer[1024];    unsigned char m_RxBuffer[1024];
+private:/*PRIVATE CLASS FUNCTION*/    bool HWAddress(const char* const ifname, unsigned char* const hw_address);    ARPSpoof();    ~ARPSpoof();
+public:    void DoARPSpoof(const char *ifname, const char* filename);
 };
-
 #endif /*_ARP_SPOOF_WIRED_*/
