@@ -6,9 +6,10 @@
 #include <netinet/if_ether.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
-#include <linux/ipv6.h>
+
 #include <cstring>
 #include <cstdio>
+#include <cstdint>
 
 #include "ARPSpoof.h"
 
@@ -27,64 +28,109 @@
 #define ARP_LEN                  (sizeof(struct ether_header) + sizeof(struct ether_arp))
 #endif /*ARP_LEN*/
 
-struct icmpv6hdr
+////////////////////////////// Header Formats
+// IPv6 Header
+struct IPv6Header {
+	uint32_t            Version4_Priority8_Flowlabel20;
+	uint16_t            PayloadLenth;
+	uint8_t             NextHeader;
+	uint8_t             HopLimit;
+	uint8_t             SourceAddress[16];
+	uint8_t             DestinationAddress[16];
+}__attribute__((packed));
+// ICMPv6 Header
+struct ICMPv6Header
 {
-    unsigned char icmpv6_type;
-    unsigned char icmpv6_code;
-    unsigned short int icmpv6_cksum;
+    uint8_t         Type;
+    uint8_t         Code;
+    uint16_t        Checksum;
     union
     {
-        unsigned int data_32[1];
-        unsigned short int data_16[2];
-        unsigned char data_8[4];
+        uint32_t    Data32[1];
+        uint16_t    Data16[2];
+        uint8_t     Data8[4];
     }
-    icmpv6_dataun;
+    Payload;
+}__attribute__((packed));
+// ICMPv6 uint32_t
+//
+struct RouterSolicitation
+{
+    uint32_t Reserved;
 }__attribute__((packed));
 
 struct RouterAdvertisement
 {
-    unsigned char HopLimit;
-    unsigned char Flag;
-    unsigned short Lifetime;
-    unsigned int ReachableTime;
-    unsigned int RetransmissionTime;
+    uint8_t HopLimit;
+    uint8_t M1_O1_Reserved6;
+    uint16_t RouterLifetime;
+    uint32_t ReachableTime;
+    uint32_t RetransmissionTime;
 }__attribute__((packed));
 
-struct TLV
+struct NeighborSolicitation
 {
-    unsigned char Type;
-    unsigned char Length;
-    unsigned char Value[1];
+    uint32_t Reserved;
+    uint8_t TargetAddress[16];
 }__attribute__((packed));
 
-enum ICMPOptions
+struct NeighborAdvertisement
+{
+    uint32_t R1_S1_O1_Reserved29;
+    uint8_t TargetAddress[16];
+}__attribute__((packed));
+
+enum ICMPOptions : uint8_t
 {
     Source_Link_Layer_Address = 1,
     Target_Link_Layer_Address,
     Prefix_Information,
     Redirected_Header,
     MTU
+};
+
+struct ICMPOptionTLV
+{
+    ICMPOptions Type;
+    uint8_t     Length;
+    uint8_t     Value[1];
 }__attribute__((packed));
 
 struct ICMPOptionLinkLayerAddress
 {
-    unsigned char Type;
-    unsigned char Length;
-    unsigned char Address[6];
+    ICMPOptions Type;
+    uint8_t     Length;
+    uint8_t     Address[6];
 }__attribute__((packed));
 
 struct ICMPOptionPrefixInformation
 {
-    unsigned char Type;
-    unsigned char Length;
-    unsigned char PrefixLength;
-    unsigned char Flag;
-    unsigned int ValidLifetime;
-    unsigned int PreferredLifetime;
-    unsigned int Reserved;
-    unsigned char Prefix[16];
+    ICMPOptions Type;
+    uint8_t     Length;
+    uint8_t     PrefixLength;
+    uint8_t     M1_O1_Reserved6;
+    uint32_t    ValidLifetime;
+    uint32_t    PreferredLifetime;
+    uint32_t    Reserved;
+    uint8_t     Prefix[16];
 }__attribute__((packed));
 
+struct ICMPOptionRedirectedHeader
+{
+    ICMPOptions Type;
+    uint8_t     Length;
+    uint16_t    Reserved_1;
+    uint32_t    Reserved_2;
+    IPv6Header  IPv6HeaderPayload;
+}__attribute__((packed));
+
+struct ICMPOptionMTU
+{
+    ICMPOptions Type;
+    uint8_t     Length;
+    uint16_t    Reserved;
+    uint32_t    MTU;
+}__attribute__((packed));
 
 ARPSpoof* ARPSpoof::g_Instance = new ARPSpoof();
 
@@ -93,7 +139,7 @@ ARPSpoof* ARPSpoof::Instance()
     return g_Instance;
 }
 
-bool ARPSpoof::HWAddress(const char* const ifname, unsigned char* const hw_address)
+bool ARPSpoof::HWAddress(const char* const ifname, uint8_t* const hw_address)
 {
     FILE *file;
     char hw[MAC_ADDR_BUFFER_SIZE]={0};
@@ -119,11 +165,11 @@ bool ARPSpoof::HWAddress(const char* const ifname, unsigned char* const hw_addre
 
 void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
 {
-    unsigned char HWAddr[ETHER_ADDR_LEN] = {0};
+    uint8_t HWAddr[ETHER_ADDR_LEN] = {0};
     ether_header* const RxEthHdr = (ether_header*)m_RxBuffer;
     ether_arp* const RxARPHdr= (ether_arp*)(m_RxBuffer+sizeof(ether_header));
-    ipv6hdr* const IPv6Hdr = (ipv6hdr*)(m_RxBuffer+sizeof(ether_header));
-    icmpv6hdr* const ICMPv6Hdr = (icmpv6hdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ipv6hdr));
+    IPv6Header* const IPv6Hdr = (IPv6Header*)(m_RxBuffer+sizeof(ether_header));
+    ICMPv6Header* const ICMPv6Hdr = (ICMPv6Header*)(m_RxBuffer+sizeof(ether_header)+sizeof(IPv6Header));
     ether_header* const TxEthHdr = (ether_header *)m_TxBuffer;
     ether_arp* const TxARPHdr = (ether_arp *)(m_TxBuffer + sizeof(ether_header));
 
@@ -140,7 +186,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
     int MaxFD = -1;
     fd_set ReadFD;
     FD_ZERO(&ReadFD);
-    for(unsigned int i = 0 ; i < m_RxSockets.size() ; i++)
+    for(uint32_t i = 0 ; i < m_RxSockets.size() ; i++)
     {
         FD_SET(m_RxSockets[i], &ReadFD);
         if(m_RxSockets[i] > MaxFD)
@@ -156,7 +202,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
         {
             continue;
         }
-        for(unsigned int i = 0 ; i < m_RxSockets.size() ; i++)
+        for(uint32_t i = 0 ; i < m_RxSockets.size() ; i++)
         {
             if(FD_ISSET(m_RxSockets[IPV4], &AllFD))
             {
@@ -221,35 +267,48 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                 {
                     continue;
                 }
-                if(IPv6Hdr->nexthdr != 0x3A)
+                if(IPv6Hdr->NextHeader != 0x3A)
                 {
                     continue;
                 }
-                if(ICMPv6Hdr->icmpv6_type == 133)
-                {
-                    printf("Router Solicitation\n");
-                }
-                else if(ICMPv6Hdr->icmpv6_type == 134)
+                if(ICMPv6Hdr->Type == 133)
                 {
                     int parsingposition = 0;
-                    printf("Router Advertisement\n");
-                    printf("ICMP Type %hhu\n", ICMPv6Hdr->icmpv6_type);
-                    printf("ICMP Code %hhu\n", ICMPv6Hdr->icmpv6_code);
-                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->icmpv6_cksum);
-                    RouterAdvertisement* payload = (RouterAdvertisement*)ICMPv6Hdr->icmpv6_dataun.data_8;
-                    printf("Hoplimit %hhu\n", payload->HopLimit);
-                    printf("Flag %hhx\n", payload->Flag);
-                    printf("Lifetime %hu s\n", ntohs(payload->Lifetime));
-                    printf("ReachableTime %u ms\n", ntohl(payload->ReachableTime));
-                    printf("RetransmissionTime %u ms\n", ntohl(payload->RetransmissionTime));
-                    parsingposition += 16;
-                    while(((unsigned char*)ICMPv6Hdr + parsingposition) < ((unsigned char*)m_RxBuffer + received_bytes))
+                    printf("============================\n");
+                    printf("IP SRC: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
                     {
-                        TLV* tlv = (TLV*)((unsigned char*)ICMPv6Hdr + parsingposition);
+                        printf("%02hhx", IPv6Hdr->SourceAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("IP DST: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->DestinationAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("Router Solicitation\n");
+                    printf("ICMP Type %hhu\n", ICMPv6Hdr->Type);
+                    printf("ICMP Code %hhu\n", ICMPv6Hdr->Code);
+                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->Checksum);
+                    RouterSolicitation* payload = (RouterSolicitation*)ICMPv6Hdr->Payload.Data8;
+                    printf("-Reserved %x\n", ntohl(payload->Reserved));
+                    parsingposition += 8;
+                    while(((uint8_t*)ICMPv6Hdr + parsingposition) < ((uint8_t*)m_RxBuffer + received_bytes))
+                    {
+                        ICMPOptionTLV* tlv = (ICMPOptionTLV*)((uint8_t*)ICMPv6Hdr + parsingposition);
                         if(tlv->Type == Source_Link_Layer_Address)
                         {
                             ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
-                            printf("SourceLinkAddr: %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", 
+                            printf("--SourceLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
                                 option->Address[0],
                                 option->Address[1],
                                 option->Address[2],
@@ -260,7 +319,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                         else if(tlv->Type == Target_Link_Layer_Address)
                         {
                             ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
-                            printf("TargetLinkAddr: %hhx:%hhx:%hhx:%hhx:%hhx:%hhx\n", 
+                            printf("--TargetLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
                                 option->Address[0],
                                 option->Address[1],
                                 option->Address[2],
@@ -271,35 +330,322 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                         else if(tlv->Type == Prefix_Information)
                         {
                             ICMPOptionPrefixInformation* const option = (ICMPOptionPrefixInformation*)tlv;
-                            printf("PrefixLength %hhu\n", option->PrefixLength);
-                            printf("Flag %hhu\n", option->Flag);
-                            printf("ValidLifetime %u\n", ntohl(option->ValidLifetime));
-                            printf("PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
-                            printf("Reserved %u\n", option->Reserved);
-                            for(unsigned char i = 0 ; i < 16 ; i++)
+                            printf("--PrefixInformation\n");
+                            printf("----PrefixLength %hhu\n", option->PrefixLength);
+                            printf("----MOReserved %hhx\n", option->M1_O1_Reserved6);
+                            printf("----ValidLifetime %u\n", ntohl(option->ValidLifetime));
+                            printf("----PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
+                            printf("----Reserved %u\n", ntohl(option->Reserved));
+                            printf("----Prefix ");
+                            for(uint8_t i = 0 ; i < 16 ; i++)
                             {
-                                printf("%hhx:", option->Prefix[i]);
+                                printf("%02hhx", option->Prefix[i]);
+                                if(i%2 == 1 && i != 15)
+                                {
+                                    printf(":");
+                                }
                             }
                             printf("\n");
                         }
                         else if(tlv->Type == Redirected_Header)
                         {
-
+                            printf("--RedirectedHeader\n");
                         }
                         else if(tlv->Type == MTU)
                         {
-
+                            ICMPOptionMTU* const option = (ICMPOptionMTU*)tlv;
+                            printf("--MTU : %u\n", ntohl(option->MTU));
                         }
                         parsingposition += tlv->Length*8;
                     }
                 }
-                else if(ICMPv6Hdr->icmpv6_type == 135)
+                else if(ICMPv6Hdr->Type == 134)
                 {
-                    printf("Neighbor Solicitation\n");
+                    int parsingposition = 0;
+                    printf("============================\n");
+                    printf("IP SRC: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->SourceAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("IP DST: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->DestinationAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("Router Advertisement\n");
+                    printf("ICMP Type %hhu\n", ICMPv6Hdr->Type);
+                    printf("ICMP Code %hhu\n", ICMPv6Hdr->Code);
+                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->Checksum);
+                    RouterAdvertisement* payload = (RouterAdvertisement*)ICMPv6Hdr->Payload.Data8;
+                    printf("-Hoplimit %hhu\n", payload->HopLimit);
+                    printf("-MOReserved %hhx\n", payload->M1_O1_Reserved6);
+                    printf("-Lifetime %hu s\n", ntohs(payload->RouterLifetime));
+                    printf("-ReachableTime %u ms\n", ntohl(payload->ReachableTime));
+                    printf("-RetransmissionTime %u ms\n", ntohl(payload->RetransmissionTime));
+                    parsingposition += 16;
+                    while(((uint8_t*)ICMPv6Hdr + parsingposition) < ((uint8_t*)m_RxBuffer + received_bytes))
+                    {
+                        ICMPOptionTLV* tlv = (ICMPOptionTLV*)((uint8_t*)ICMPv6Hdr + parsingposition);
+                        if(tlv->Type == Source_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--SourceLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Target_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--TargetLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Prefix_Information)
+                        {
+                            ICMPOptionPrefixInformation* const option = (ICMPOptionPrefixInformation*)tlv;
+                            printf("--PrefixInformation\n");
+                            printf("----PrefixLength %hhu\n", option->PrefixLength);
+                            printf("----MOReserved %hhx\n", option->M1_O1_Reserved6);
+                            printf("----ValidLifetime %u\n", ntohl(option->ValidLifetime));
+                            printf("----PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
+                            printf("----Reserved %u\n", ntohl(option->Reserved));
+                            printf("----Prefix ");
+                            for(uint8_t i = 0 ; i < 16 ; i++)
+                            {
+                                printf("%02hhx", option->Prefix[i]);
+                                if(i%2 == 1 && i != 15)
+                                {
+                                    printf(":");
+                                }
+                            }
+                            printf("\n");
+                        }
+                        else if(tlv->Type == Redirected_Header)
+                        {
+                            printf("--RedirectedHeader\n");
+                        }
+                        else if(tlv->Type == MTU)
+                        {
+                            ICMPOptionMTU* const option = (ICMPOptionMTU*)tlv;
+                            printf("--MTU : %u\n", ntohl(option->MTU));
+                        }
+                        parsingposition += tlv->Length*8;
+                    }
                 }
-                else if(ICMPv6Hdr->icmpv6_type == 136)
+                else if(ICMPv6Hdr->Type == 135)
                 {
+                    int parsingposition = 0;
+                    printf("============================\n");
+                    printf("IP SRC: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->SourceAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("IP DST: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->DestinationAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("Neighbor Solicitation\n");
+                    printf("ICMP Type %hhu\n", ICMPv6Hdr->Type);
+                    printf("ICMP Code %hhu\n", ICMPv6Hdr->Code);
+                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->Checksum);
+                    NeighborSolicitation* payload = (NeighborSolicitation*)ICMPv6Hdr->Payload.Data8;
+                    printf("-Reserved %x\n", ntohl(payload->Reserved));
+                    printf("-TargetAddress ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", payload->TargetAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    parsingposition += 24;
+                    while(((uint8_t*)ICMPv6Hdr + parsingposition) < ((uint8_t*)m_RxBuffer + received_bytes))
+                    {
+                        ICMPOptionTLV* tlv = (ICMPOptionTLV*)((uint8_t*)ICMPv6Hdr + parsingposition);
+                        if(tlv->Type == Source_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--SourceLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Target_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--TargetLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Prefix_Information)
+                        {
+                            ICMPOptionPrefixInformation* const option = (ICMPOptionPrefixInformation*)tlv;
+                            printf("--PrefixInformation\n");
+                            printf("----PrefixLength %hhu\n", option->PrefixLength);
+                            printf("----MOReserved %hhx\n", option->M1_O1_Reserved6);
+                            printf("----ValidLifetime %u\n", ntohl(option->ValidLifetime));
+                            printf("----PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
+                            printf("----Reserved %u\n", ntohl(option->Reserved));
+                            printf("----Prefix ");
+                            for(uint8_t i = 0 ; i < 16 ; i++)
+                            {
+                                printf("%02hhx", option->Prefix[i]);
+                                if(i%2 == 1 && i != 15)
+                                {
+                                    printf(":");
+                                }
+                            }
+                            printf("\n");
+                        }
+                        else if(tlv->Type == Redirected_Header)
+                        {
+                            printf("--RedirectedHeader\n");
+                        }
+                        else if(tlv->Type == MTU)
+                        {
+                            ICMPOptionMTU* const option = (ICMPOptionMTU*)tlv;
+                            printf("--MTU : %u\n", ntohl(option->MTU));
+                        }
+                        parsingposition += tlv->Length*8;
+                    }
+                }
+                else if(ICMPv6Hdr->Type == 136)
+                {
+                    int parsingposition = 0;
+                    printf("============================\n");
+                    printf("IP SRC: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->SourceAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    printf("IP DST: ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", IPv6Hdr->DestinationAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
                     printf("Neighbor Advertisement\n");
+                    printf("ICMP Type %hhu\n", ICMPv6Hdr->Type);
+                    printf("ICMP Code %hhu\n", ICMPv6Hdr->Code);
+                    printf("ICMP CKSUM %hu\n", ICMPv6Hdr->Checksum);
+                    NeighborAdvertisement* payload = (NeighborAdvertisement*)ICMPv6Hdr->Payload.Data8;
+                    printf("-Reserved %x\n", ntohl(payload->R1_S1_O1_Reserved29));
+                    printf("-TargetAddress ");
+                    for(uint32_t i = 0 ; i < 16 ; i++)
+                    {
+                        printf("%02hhx", payload->TargetAddress[i]);
+                        if(i%2 == 1 && i != 15)
+                        {
+                            printf(":");
+                        }
+                    }
+                    printf("\n");
+                    parsingposition += 24;
+                    while(((uint8_t*)ICMPv6Hdr + parsingposition) < ((uint8_t*)m_RxBuffer + received_bytes))
+                    {
+                        ICMPOptionTLV* tlv = (ICMPOptionTLV*)((uint8_t*)ICMPv6Hdr + parsingposition);
+                        if(tlv->Type == Source_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--SourceLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Target_Link_Layer_Address)
+                        {
+                            ICMPOptionLinkLayerAddress* const option = (ICMPOptionLinkLayerAddress*)tlv;
+                            printf("--TargetLinkLayerAddress: %02hhx:%02hhx:%02hhx:%02hhx:%02hhx:%02hhx\n", 
+                                option->Address[0],
+                                option->Address[1],
+                                option->Address[2],
+                                option->Address[3],
+                                option->Address[4],
+                                option->Address[5]);
+                        }
+                        else if(tlv->Type == Prefix_Information)
+                        {
+                            ICMPOptionPrefixInformation* const option = (ICMPOptionPrefixInformation*)tlv;
+                            printf("--PrefixInformation\n");
+                            printf("----PrefixLength %hhu\n", option->PrefixLength);
+                            printf("----MOReserved %hhx\n", option->M1_O1_Reserved6);
+                            printf("----ValidLifetime %u\n", ntohl(option->ValidLifetime));
+                            printf("----PreferredLifetime %u\n", ntohl(option->PreferredLifetime));
+                            printf("----Reserved %u\n", ntohl(option->Reserved));
+                            printf("----Prefix ");
+                            for(uint8_t i = 0 ; i < 16 ; i++)
+                            {
+                                printf("%02hhx", option->Prefix[i]);
+                                if(i%2 == 1 && i != 15)
+                                {
+                                    printf(":");
+                                }
+                            }
+                            printf("\n");
+                        }
+                        else if(tlv->Type == Redirected_Header)
+                        {
+                            printf("--RedirectedHeader\n");
+                        }
+                        else if(tlv->Type == MTU)
+                        {
+                            ICMPOptionMTU* const option = (ICMPOptionMTU*)tlv;
+                            printf("--MTU : %u\n", ntohl(option->MTU));
+                        }
+                        parsingposition += tlv->Length*8;
+                    }
                 }
             }
         }
@@ -318,7 +664,7 @@ ARPSpoof::ARPSpoof()
 
 ARPSpoof::~ARPSpoof()
 {
-    for(unsigned int i = 0 ; i < m_RxSockets.size() ; i++)
+    for(uint32_t i = 0 ; i < m_RxSockets.size() ; i++)
     {
         close(m_RxSockets[i]);
     }
