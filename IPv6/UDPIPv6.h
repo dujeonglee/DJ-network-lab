@@ -5,14 +5,14 @@
 
 enum NetworkType
 {
-    IPV4Network,
+    IPV4Network = 0,
     IPV6Network
 };
 
 class UDPSocket
 {
 private:
-    std::vector< std::pair<int, NetworkType> > m_Sockets;
+    int m_Sockets[2];
     std::thread m_RxThread;
     bool m_RxRunning;
 public:
