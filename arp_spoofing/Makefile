@@ -4,17 +4,17 @@
 SOURCES  := $(wildcard *.cpp)
 INCLUDES := 
 OBJECTS  := $(SOURCES:.cpp=.o)
-LIBRARY :=
+LIBRARY := -lpthread
 CPP := g++
 TARGET = arp_spoof_attck
 
 all : debug
 
 $(TARGET) : $(OBJECTS)
-	$(CPP) -o $@  $^
+	$(CPP) -o $@  $^  $(LIBRARY)
 
 .cc.o : $(SOURCES)
-	$(CPP) $(CPPFLAGS) $(INCLUDES) $(SOURCES) $(LIBRARY)
+	$(CPP) $(CPPFLAGS) $(INCLUDES) $(SOURCES)
 
 clean :
 	rm -rf $(OBJECTS) $(TARGET) *~
@@ -25,4 +25,3 @@ debug : $(TARGET)
 
 release : CPPFLAGS := -O3 -c -Wall -Werror -std=c++0x
 release : $(TARGET)
-
