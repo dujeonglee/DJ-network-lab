@@ -1,6 +1,7 @@
 #ifndef _ARP_SPOOF_
 #define _ARP_SPOOF_
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -19,13 +20,14 @@ public:/*PUBLIC STATIC FUNCTION*/
 private:/*PRIVATE STATIC FUNCTION*/
     static bool HWAddress(const char* const ifname, unsigned char* const hw_address);
 private:/*PRIVATE CLASS VARIABLE*/
-    std::vector< int > m_RxSockets;
+    int m_RxSockets[2];
     int m_TxSocket;
     unsigned char m_TxBuffer[1024];
     unsigned char m_RxBuffer[1024];
 private:/*PRIVATE CLASS FUNCTION*/
     ARPSpoof();
     ~ARPSpoof();
+    uint16_t ICMPChecksum(void* IP6Hdr);
 public:
     void DoARPSpoof(const char *ifname, const char* filename);
 };
