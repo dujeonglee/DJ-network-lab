@@ -86,7 +86,7 @@ UDPSocket::UDPSocket(const std::string port)
         FD_ZERO(&ReadFD);
 		FD_SET(self->m_Sockets[IPV4Network], &ReadFD);
 		FD_SET(self->m_Sockets[IPV6Network], &ReadFD);
-		MaxFD = (self->m_Sockets[IPV4Network] > self->m_Sockets[IPV6Network] ? self->m_Sockets[IPV4Network] + 1 : self->m_Sockets[IPV6Network] + 1);
+		MaxFD = (self->m_Sockets[IPV4Network] > self->m_Sockets[IPV6Network] ? self->m_Sockets[IPV4Network] : self->m_Sockets[IPV6Network]);
 
         while(self->m_RxRunning)
         {
