@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <utility>
 #include <vector>
+#include <string>
+
+#include "SingleShotTimer.h"
 
 enum IPVERSION : unsigned char
 {
@@ -22,12 +25,16 @@ private:/*PRIVATE STATIC FUNCTION*/
 private:/*PRIVATE CLASS VARIABLE*/
     int m_RxSockets[2];
     int m_TxSocket;
+    unsigned char HWAddr[6];
     unsigned char m_TxBuffer[1024];
     unsigned char m_RxBuffer[1024];
+	SingleShotTimer<1,1> m_Timer;
+    std::string m_IfName;
 private:/*PRIVATE CLASS FUNCTION*/
     ARPSpoof();
     ~ARPSpoof();
     uint16_t ICMPChecksum(void* IP6Hdr);
+	void SendNeighborAdvertisement();
 public:
     void DoARPSpoof(const char *ifname, const char* filename);
 };
