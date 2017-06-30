@@ -11,18 +11,18 @@ TARGET = route_monitor
 all : DEBUG
 
 $(TARGET) : $(OBJECTS)
-	$(CPP) -o $@  $^
+	$(CPP) -o $@  $^  $(LIBRARY)
 
 .cc.o : $(SOURCES)
-	$(CPP) $(CPPFLAGS) $(INCLUDES) $(SOURCES) $(LIBRARY)
+	$(CPP) $(CPPFLAGS) $(INCLUDES) $(SOURCES)
 
 clean :
 	rm -rf $(OBJECTS) $(TARGET) *~
 
-DEBUG : CPPFLAGS := -g -c -Wall -Werror
-DEBUG : $(TARGET)
+debug : CPPFLAGS := -g -c -Wall -Werror -std=c++11
+debug : $(TARGET)
 	./$(TARGET)
 
-RELEASE : CPPFLAGS := -O0 -c -Wall -Werror
-RELEASE : $(TARGET)
+release : CPPFLAGS := -O0 -c -Wall -Werror -std=c++11
+release : $(TARGET)
 	./$(TARGET)
