@@ -5,7 +5,7 @@
 
 int main(int argc, char* argv[]){
     while(1){
-        route_monitor::instance()->waiting_for_routing_change();
+        RouteMonitor::Instance()->MonitorRoutingUpdate();
     }
 
     return 0;
