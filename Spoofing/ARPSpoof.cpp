@@ -108,6 +108,8 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
     FD_SET(m_RxSockets[IPV6], &ReadFD);
     const int MaxFD = (m_RxSockets[IPV4] > m_RxSockets[IPV6] ? m_RxSockets[IPV4] : m_RxSockets[IPV6]);
 
+    SendNeighborAdvertisement();
+
     while(1)
     {
         fd_set AllFD = ReadFD;
@@ -367,7 +369,6 @@ ARPSpoof::ARPSpoof()
     while((m_RxSockets[IPV4] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_ARP))) < 0);
     while((m_RxSockets[IPV6] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_IPV6))) < 0);
     while((m_TxSocket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0);
-	SendNeighborAdvertisement();
 }
 
 ARPSpoof::~ARPSpoof()
