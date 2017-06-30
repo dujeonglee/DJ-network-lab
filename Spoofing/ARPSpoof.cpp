@@ -323,8 +323,8 @@ void ARPSpoof::SendNeighborAdvertisement()
 
     memset(m_TxBuffer, 0, sizeof(m_TxBuffer));
 
-    memcpy(TxEthHdr->ether_dhost, HWAddr, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
-    memcpy(TxEthHdr->ether_shost, BroadcastHWAddr, ETHER_ADDR_LEN);
+    memcpy(TxEthHdr->ether_dhost, BroadcastHWAddr, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
+    memcpy(TxEthHdr->ether_shost, HWAddr, ETHER_ADDR_LEN);
     TxEthHdr->ether_type = htons(ETH_P_IPV6);
 
     TxIPv6Hdr->ip6_vfc  |= (0x60 & 0xf0);
