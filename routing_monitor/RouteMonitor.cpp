@@ -1,44 +1,46 @@
-#include <stdio.h>
-#include <string.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
-#include <unistd.h>
+
+#include <cstdio>
+#include <cstring>
+#include <cstdint>
 
 #include "RouteMonitor.h"
 
-route_monitor* route_monitor::_instance = NULL;
+RouteMonitor* RouteMonitor::m_Instance = NULL;
 
-route_monitor* route_monitor::instance(){
-    if(_instance){
-        return _instance;
+RouteMonitor* RouteMonitor::Instance(){
+    if(m_Instance){
+        return m_Instance;
     }
-    _instance = new route_monitor;
-    if(_instance == NULL){
+    m_Instance = new RouteMonitor;
+    if(m_Instance == NULL){
         printf("FATAL - out of memory\n");
     }
-    return _instance;
+    return m_Instance;
 }
 
-void route_monitor::waiting_for_routing_change(){
+void RouteMonitor::MonitorRoutingUpdate(){
 	int     received_bytes = 0;
     struct  nlmsghdr *nlh;
     struct  rtmsg *route_entry;  /* This struct represent a route entry in the routing table */
     struct  rtattr *route_attribute; /* This struct contain route attributes (route type) */
     int     route_attribute_len = 0;
-	u32		destination = 0;
-	u32		gateway = 0;
+	uint8_t*    destination;
+	uint8_t*    gateway;
 	int		oif = 0;
     
-    memset(_instance->_buffer, 0x0, sizeof(_instance->_buffer));
+    memset(m_Instance->m_Buffer, 0x0, sizeof(m_Instance->m_Buffer));
 
     /* Receiving netlink socket data */
-    received_bytes = recv(_instance->_sock, _instance->_buffer, sizeof(_instance->_buffer), 0);
+    received_bytes = recv(m_Instance->m_Sock, m_Instance->m_Buffer, sizeof(m_Instance->m_Buffer), 0);
     if (received_bytes < 0){
         return;
 	}
 	/* cast the received buffer */
-	nlh = (struct nlmsghdr *) _instance->_buffer;
+	nlh = (struct nlmsghdr *) m_Instance->m_Buffer;
 
     /* Reading netlink socket data */
     /* Loop through all entries */
@@ -60,14 +62,17 @@ void route_monitor::waiting_for_routing_change(){
         /* Get the route atttibutes len */
         route_attribute_len = RTM_PAYLOAD(nlh);
         /* Loop through all attributes */
+        destination = nullptr;
+        gateway = nullptr;
+        oif = 0;
         for ( ; RTA_OK(route_attribute, route_attribute_len); route_attribute = RTA_NEXT(route_attribute, route_attribute_len)){
             /* Get the destination address */
             if (route_attribute->rta_type == RTA_DST){
-                destination = *(u32*)RTA_DATA(route_attribute);
+                destination = (uint8_t*)RTA_DATA(route_attribute);
             }
             /* Get the gateway (Next hop) */
             if (route_attribute->rta_type == RTA_GATEWAY){
-				gateway = *(u32*)RTA_DATA(route_attribute);
+				gateway = (uint8_t*)RTA_DATA(route_attribute);
             }
 			/* Get out interface index */
             if (route_attribute->rta_type == RTA_OIF){
@@ -75,28 +80,84 @@ void route_monitor::waiting_for_routing_change(){
             }
         }
 
-        printf("Route Update: %s %hhu.%hhu.%hhu.%hhu/%hhu via %hhu.%hhu.%hhu.%hhu dev %u [Flags %hu]\n", ((u32)nlh->nlmsg_type==RTM_DELROUTE?"DELETE":"ADD"),
-               ((u8*)&destination)[0], ((u8*)&destination)[1], ((u8*)&destination)[2], ((u8*)&destination)[3],
-                route_entry->rtm_dst_len,
-                ((u8*)&gateway)[0], ((u8*)&gateway)[1], ((u8*)&gateway)[2], ((u8*)&gateway)[3],
-                oif,
-                nlh->nlmsg_flags);
+        if(route_entry->rtm_family == AF_INET)
+        {
+            printf("IPv4 Route Update : %s ", ((uint32_t)nlh->nlmsg_type==RTM_DELROUTE?"DELETE":"ADD"));
+            for(uint8_t i = 0 ; i < 4 ; i++)
+            {
+                printf("%hhu", destination[i]);
+                if(i < 3)
+                {
+                    printf(".");
+                }
+            }
+            printf("/%hhu", route_entry->rtm_dst_len);
+            printf(" via ");
+            if(gateway)
+            {
+                for(uint8_t i = 0 ; i < 4 ; i++)
+                {
+                    printf("%hhu", gateway[i]);
+                    if(i < 3)
+                    {
+                        printf(".");
+                    }
+                }
+            }
+            else
+            {
+                printf("0.0.0.0");
+            }
+            printf(" dev %u", oif);
+            printf("[Flags %hu]\n", nlh->nlmsg_flags);
+        }
+        else if(route_entry->rtm_family == AF_INET6)
+        {
+            printf("IPv6 Route Update : %s ", ((uint32_t)nlh->nlmsg_type==RTM_DELROUTE?"DELETE":"ADD"));
+            for(uint8_t i = 0 ; i < 16 ; i++)
+            {
+                printf("%02hhx", destination[i]);
+                if(i % 2 == 1 && i != 15)
+                {
+                    printf(":");
+                }
+            }
+            printf("/%hhu", route_entry->rtm_dst_len);
+            printf(" via ");
+            if(gateway)
+            {
+                for(uint8_t i = 0 ; i < 16 ; i++)
+                {
+                    printf("%02hhx", gateway[i]);
+                    if(i % 2 == 1 && i != 15)
+                    {
+                        printf(":");
+                    }
+                }
+            }
+            else
+            {
+                printf("::");
+            }
+            printf(" dev %u", oif);
+            printf("[Flags %hu]\n", nlh->nlmsg_flags);
+        }
     }
     return;
 }
 
-route_monitor::route_monitor(){
+RouteMonitor::RouteMonitor(){
     struct sockaddr_nl addr;
 
-    while((_sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE)) < 0);
+    while((m_Sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE)) < 0);
 
     memset(&addr, 0x0, sizeof(addr));
     addr.nl_family = AF_NETLINK;
-    addr.nl_groups = RTMGRP_IPV4_ROUTE;
+    addr.nl_groups = RTMGRP_IPV4_ROUTE | RTMGRP_IPV6_ROUTE;
 
-    while(bind(_sock,(struct sockaddr *)&addr,sizeof(addr)) < 0);
+    while(bind(m_Sock,(struct sockaddr *)&addr,sizeof(addr)) < 0);
 }
 
-route_monitor::~route_monitor(){
-    close(_sock);
+RouteMonitor::~RouteMonitor(){
+    close(m_Sock);
 }
