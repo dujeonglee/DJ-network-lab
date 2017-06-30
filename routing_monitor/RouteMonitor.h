@@ -1,26 +1,22 @@
 #ifndef _ROUTE_WATCH_DOG_
 #define _ROUTE_WATCH_DOG_
 
-typedef unsigned int u32;											/*!< unsigned integer */
-typedef unsigned short u16;											/*!< unsigned short */
-typedef unsigned char u8;
-
-class route_monitor{
+class RouteMonitor{
 private:/*PRIVATE STATIC VARIABLE*/
-    static route_monitor* _instance;
+    static RouteMonitor* m_Instance;
 public:/*PUBLIC STATIC FUNCTION*/
-    static route_monitor* instance();
+    static RouteMonitor* Instance();
 public:/*PRIVATE STATIC FUNCTION*/
 
 private:/*PRIVATE CLASS VARIABLE*/
-    int _sock;
-    char _buffer[1024];
+    int m_Sock;
+    char m_Buffer[1024];
 
 public:/*PUBLIC CLASS FUNCTION*/
-    void waiting_for_routing_change();
+    void MonitorRoutingUpdate();
 private:/*PRIVATE CLASS FUNCTION*/
-    route_monitor();
-    ~route_monitor();
+    RouteMonitor();
+    ~RouteMonitor();
 };
 #endif
 
