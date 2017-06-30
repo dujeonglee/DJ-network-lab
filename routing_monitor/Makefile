@@ -1,4 +1,4 @@
-.PHONY : all debug release backup
+.PHONY : all debug release
 .SUFFIXES : .cpp .o
 
 SOURCES  := $(wildcard *.cpp)
@@ -8,7 +8,7 @@ LIBRARY :=
 CPP := g++
 TARGET = route_monitor
 
-all : DEBUG
+all : debug
 
 $(TARGET) : $(OBJECTS)
 	$(CPP) -o $@  $^  $(LIBRARY)
