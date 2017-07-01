@@ -13,7 +13,7 @@
 
 UDPSocket::UDPSocket(const std::string port)
 {
-	// 1 Open Socket
+    // 1 Open Socket
     addrinfo hints;
     addrinfo *ret;
 
@@ -137,7 +137,7 @@ int UDPSocket::Send(const std::string address, const std::string port, const voi
 
     if(0 != getaddrinfo(address.c_str(), port.c_str(), &hints, &ret))
     {
-        if(nullptr)
+        if(ret != nullptr)
         {
             freeaddrinfo(ret);
         }
