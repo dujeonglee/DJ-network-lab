@@ -17,8 +17,8 @@ UDPSocket::UDPSocket(const std::string port)
     addrinfo hints;
     addrinfo *ret;
 
-	m_Sockets[IPV4Network] = -1;
-	m_Sockets[IPV6Network] = -1;
+    m_Sockets[IPV4Network] = -1;
+    m_Sockets[IPV6Network] = -1;
     
     memset(&hints, 0x00, sizeof(hints));
     hints.ai_flags = AI_PASSIVE;
@@ -45,10 +45,10 @@ UDPSocket::UDPSocket(const std::string port)
             {
                 exit(-1);
             }
-			if(bind(m_Sockets[IPV4Network], iter->ai_addr, iter->ai_addrlen) != 0) 
-			{
-				exit(-1);                
-			}
+            if(bind(m_Sockets[IPV4Network], iter->ai_addr, iter->ai_addrlen) != 0) 
+            {
+                exit(-1);                
+            }
         } 
         // IPv6
         else if(iter->ai_family == AF_INET6) 
@@ -63,17 +63,17 @@ UDPSocket::UDPSocket(const std::string port)
                 exit(-1);
             }
             setsockopt(m_Sockets[IPV6Network], IPPROTO_IPV6, IPV6_V6ONLY, (char *)&opt, sizeof(opt)); 
-			if(bind(m_Sockets[IPV6Network], iter->ai_addr, iter->ai_addrlen) != 0) 
-			{
-				exit(-1);                
-			}
+            if(bind(m_Sockets[IPV6Network], iter->ai_addr, iter->ai_addrlen) != 0) 
+            {
+                exit(-1);                
+            }
         }
     }
     freeaddrinfo(ret);
-	if(m_Sockets[IPV4Network] == -1 || m_Sockets[IPV6Network] == -1)
-	{
-		exit(-1);
-	}
+    if(m_Sockets[IPV4Network] == -1 || m_Sockets[IPV6Network] == -1)
+    {
+        exit(-1);
+    }
 
 	// 2 Receive
     const UDPSocket* self = this;
@@ -84,9 +84,9 @@ UDPSocket::UDPSocket(const std::string port)
         int MaxFD = -1;
         fd_set ReadFD;
         FD_ZERO(&ReadFD);
-		FD_SET(self->m_Sockets[IPV4Network], &ReadFD);
-		FD_SET(self->m_Sockets[IPV6Network], &ReadFD);
-		MaxFD = (self->m_Sockets[IPV4Network] > self->m_Sockets[IPV6Network] ? self->m_Sockets[IPV4Network] : self->m_Sockets[IPV6Network]);
+        FD_SET(self->m_Sockets[IPV4Network], &ReadFD);
+        FD_SET(self->m_Sockets[IPV6Network], &ReadFD);
+        MaxFD = (self->m_Sockets[IPV4Network] > self->m_Sockets[IPV6Network] ? self->m_Sockets[IPV4Network] : self->m_Sockets[IPV6Network]);
 
         while(self->m_RxRunning)
         {
@@ -97,20 +97,20 @@ UDPSocket::UDPSocket(const std::string port)
             {
                 continue;
             }
-			if(FD_ISSET(self->m_Sockets[IPV4Network], &AllFD))
-			{
-				sockaddr_in sender;
-				socklen_t sender_length = sizeof(sender);
-				recvfrom(self->m_Sockets[IPV4Network], buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
-				std::cout<<"Rx IPv4"<<buffer<<std::endl;
-			}
-			if(FD_ISSET(self->m_Sockets[IPV6Network], &AllFD))
-			{
-				sockaddr_in6 sender;
-				socklen_t sender_length = sizeof(sender);
-				recvfrom(self->m_Sockets[IPV6Network], buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
-				std::cout<<"Rx IPv6"<<buffer<<std::endl;
-			}
+            if(FD_ISSET(self->m_Sockets[IPV4Network], &AllFD))
+            {
+                sockaddr_in sender;
+                socklen_t sender_length = sizeof(sender);
+                recvfrom(self->m_Sockets[IPV4Network], buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
+                std::cout<<"Rx IPv4"<<buffer<<std::endl;
+            }
+            if(FD_ISSET(self->m_Sockets[IPV6Network], &AllFD))
+            {
+                sockaddr_in6 sender;
+                socklen_t sender_length = sizeof(sender);
+                recvfrom(self->m_Sockets[IPV6Network], buffer, sizeof(buffer), 0, (sockaddr*)&sender, &sender_length);
+                std::cout<<"Rx IPv6"<<buffer<<std::endl;
+            }
         }
     });
 }
@@ -119,8 +119,8 @@ UDPSocket::~UDPSocket()
 {
     m_RxRunning = false;
     m_RxThread.join();
-	close(m_Sockets[IPV4Network]);
-	close(m_Sockets[IPV6Network]);
+    close(m_Sockets[IPV4Network]);
+    close(m_Sockets[IPV6Network]);
 }
 
 
@@ -147,13 +147,13 @@ int UDPSocket::Send(const std::string address, const std::string port, const voi
     {
         if(iter->ai_family == AF_INET)
         {
-			std::cout<<"Send IPv4"<<std::endl;
-			sendto(m_Sockets[IPV4Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
+            std::cout<<"Send IPv4"<<std::endl;
+            sendto(m_Sockets[IPV4Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
         }
         else if(iter->ai_family == AF_INET6)
         {
-			std::cout<<"Send IPv6"<<std::endl;
-			sendto(m_Sockets[IPV6Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
+            std::cout<<"Send IPv6"<<std::endl;
+            sendto(m_Sockets[IPV6Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
         }
     }
     freeaddrinfo(ret);
