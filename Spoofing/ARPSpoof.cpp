@@ -156,7 +156,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             ip6_hdr* const IPv6Hdr = (ip6_hdr*)(m_RxBuffer+sizeof(ether_header));
             icmp6_hdr* const ICMPv6Hdr = (icmp6_hdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ip6_hdr));
             int received_bytes/*, sent_bytes*/;
-            //sockaddr_ll ifaddr;
+
             memset(m_RxBuffer, 0x00, ARP_LEN);// Initialize the rx buffer.
             received_bytes = read(m_RxSockets[IPV6], m_RxBuffer, sizeof(m_RxBuffer));// Receive a packet.
             if(received_bytes <= 0)
@@ -309,11 +309,7 @@ void ARPSpoof::SendNeighborAdvertisement()
     ip6_hdr* const TxIPv6Hdr           = (ip6_hdr*)           (m_TxBuffer+sizeof(ether_header));
     nd_neighbor_advert* const TxNeighborAdvert = (nd_neighbor_advert*)(m_TxBuffer+sizeof(ether_header)+sizeof(ip6_hdr));
     ICMPOptionLinkLayerAddress* const TxLinkLayerAddress = (ICMPOptionLinkLayerAddress*)(m_TxBuffer+sizeof(ether_header)+sizeof(ip6_hdr)+sizeof(nd_neighbor_advert));
-    #if 0
     sockaddr_ll ifaddr;
-    #else
-    sockaddr ifaddr;
-    #endif
 
     memset(m_TxBuffer, 0, sizeof(m_TxBuffer));
 
@@ -339,17 +335,12 @@ void ARPSpoof::SendNeighborAdvertisement()
     // Calcuate Checksum
     TxNeighborAdvert->nd_na_cksum = ICMPChecksum(TxIPv6Hdr);
 
-    #if 0
     memset(&ifaddr, 0, sizeof(ifaddr));
     ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
     ifaddr.sll_family = AF_PACKET;
     memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
     ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
-    #else
-    memset(&ifaddr, 0, sizeof(ifaddr));
-    ifaddr.sa_family = AF_INET6;
-    strcpy(ifaddr.sa_data, m_IfName.c_str()); /* or whatever device */
-    #endif
+
     if((int)(sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen)) != 
         sendto(m_TxSocket, m_TxBuffer, sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen), 0, (struct sockaddr *)&ifaddr, sizeof(ifaddr)))
     {
@@ -365,9 +356,9 @@ void ARPSpoof::SendNeighborAdvertisement()
 
 ARPSpoof::ARPSpoof()
 {
-    while((m_RxSockets[IPV4] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_ARP))) < 0);
-    while((m_RxSockets[IPV6] = socket(PF_PACKET, SOCK_PACKET, htons(ETH_P_IPV6))) < 0);
-    while((m_TxSocket = socket(PF_INET, SOCK_PACKET, htons(ETH_P_ALL))) < 0);
+    while((m_RxSockets[IPV4] = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP))) < 0);
+    while((m_RxSockets[IPV6] = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_IPV6))) < 0);
+    while((m_TxSocket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0);
 }
 
 ARPSpoof::~ARPSpoof()
