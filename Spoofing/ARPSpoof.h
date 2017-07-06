@@ -25,7 +25,7 @@ private:/*PRIVATE STATIC FUNCTION*/
 private:/*PRIVATE CLASS VARIABLE*/
     int m_RxSockets[2];
     int m_TxSocket;
-    unsigned char HWAddr[6];
+    unsigned char m_HWAddr[6];
     unsigned char m_TxBuffer[1024];
     unsigned char m_RxBuffer[1024];
 	SingleShotTimer<1,1> m_Timer;
