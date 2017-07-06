@@ -111,7 +111,6 @@ void BroadMulticastForward::Forward()
         FD_SET(m_Sockets[WIRED], &ReadFD);
     }
     const int MaxFD = (m_Sockets[WIRELESS] > m_Sockets[WIRED]?m_Sockets[WIRELESS]:m_Sockets[WIRED]);
-
     const int state = select(MaxFD + 1 , &ReadFD, NULL, NULL, &rx_to);
     if(state > 0)
     {
@@ -119,12 +118,6 @@ void BroadMulticastForward::Forward()
         {
             if(m_Sockets[rxinterface] != -1 && FD_ISSET(m_Sockets[rxinterface], &ReadFD))
             {
-                ether_header* const RxEthHdr = (ether_header*)m_RxBuffer;
-                iphdr*  const RxIP4Hdr = (iphdr*)(m_RxBuffer+sizeof(ether_header));
-                ip6_hdr* const RxIP6Hdr = (ip6_hdr*)(m_RxBuffer+sizeof(ether_header));
-                udphdr* RxUDPHdr = nullptr;
-                DHCPv4* RxDHCPv4Hdr = nullptr;
-                DHCPv6* RxDHCPv6Hdr = nullptr;
                 int received_bytes = -1;
                 sockaddr_ll RxAddr;
                 socklen_t RxAddrLen = sizeof(RxAddr);
@@ -139,17 +132,93 @@ void BroadMulticastForward::Forward()
                 {
                     continue;
                 }
+                ether_header* const RxEthHdr = (ether_header*)m_RxBuffer;
                 if(ntohs(RxEthHdr->ether_type) != ETH_P_IP && ntohs(RxEthHdr->ether_type) != ETH_P_IPV6)
                 {
                     continue;
                 }
+                iphdr* const RxIP4Hdr  = (ntohs(RxEthHdr->ether_type) == ETH_P_IP ? 
+                    (iphdr*)(m_RxBuffer+sizeof(ether_header)) :
+                    nullptr);
+
+                ip6_hdr* const RxIP6Hdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IPV6 ?
+                    (ip6_hdr*)(m_RxBuffer+sizeof(ether_header)) :
+                    nullptr);
+
+                udphdr* const RxUDPHdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IP  ? 
+                    ( RxIP4Hdr->protocol == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+RxIP4Hdr->ihl*4) : nullptr ):
+                    ( RxIP6Hdr->ip6_nxt  == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ip6_hdr)) : nullptr ) );
+                if(RxUDPHdr && ntohs(RxUDPHdr->dest) == 20000)
+                {
+                    continue;
+                }
+                DHCPv4* const RxDHCPv4Hdr = (RxIP4Hdr && RxUDPHdr && (RxUDPHdr->dest == htons(67) || RxUDPHdr->dest == htons(68)) ?
+                    (DHCPv4*)((uint8_t*)RxUDPHdr + sizeof(udphdr)) :
+                    nullptr);
+                if(RxDHCPv4Hdr)
+                {
+                    if(RxDHCPv4Hdr->op == 1)
+                    {
+                        RxDHCPv4Hdr->flags = 0x80;
+                        RxUDPHdr->check = 0;
+                    }
+                    else // RxDHCPv4Hdr->op == 2
+                    {
+                        uint8_t* p_option = (uint8_t*)RxDHCPv4Hdr->options+4;
+                        bool ack = false;
+                        uint8_t* router_address = nullptr;
+                        while(p_option < (uint8_t*)RxUDPHdr + ntohs(RxUDPHdr->len))
+                        {
+                            if(p_option[0] == 53)
+                            {
+                                // Ack
+                                ack = true;
+                            }
+                            if(p_option[0] == 3)
+                            {
+                                // Router option;
+                                router_address = p_option+2;
+                            }
+                            if(ack && router_address)
+                            {
+                                break;
+                            }
+                            else
+                            {
+                                p_option = p_option + sizeof(uint8_t) + sizeof(uint8_t) + p_option[1];
+                            }
+                        }
+                        if(ack && router_address)
+                        {
+                            printf("DHCPv4 ACK [Router:%hhu.%hhu.%hhu.%hhu]\n", router_address[0], router_address[1], router_address[2], router_address[3]);
+                            sockaddr_in addr;
+                            socklen_t len = sizeof(addr);
+                            memset(&addr, 0, sizeof(addr));
+                            if(getsockname(m_Sockets[rxinterface], (sockaddr*)&addr, &len) != 0)
+                            {
+                                continue;
+                            }
+                            router_address[0] = ((uint8_t*)&addr)[0];
+                            router_address[1] = ((uint8_t*)&addr)[1];
+                            router_address[2] = ((uint8_t*)&addr)[2];
+                            router_address[3] = ((uint8_t*)&addr)[3];
+                            RxUDPHdr->check = 0;
+                        }
+
+                    }
+                }
+                DHCPv6* const RxDHCPv6Hdr = (RxIP6Hdr && RxUDPHdr && (RxUDPHdr->dest == htons(546) || RxUDPHdr->dest == htons(547)) ?
+                    (DHCPv6*)((uint8_t*)RxUDPHdr + sizeof(udphdr)) :
+                    nullptr);
+                std::cout<<(RxIP4Hdr?"[IPv4]":"")<<(RxIP6Hdr?"[IPv6]":"")<<(RxUDPHdr?"[UDP]":"")<<(RxDHCPv4Hdr?"[DHCPv4]("+std::to_string(RxDHCPv4Hdr->op)+")":"")<<(RxDHCPv6Hdr?"[DHCPv6]("+std::to_string(RxDHCPv6Hdr->Message)+")":"")<<std::endl;
+                
                 if(RxAddr.sll_pkttype == PACKET_OUTGOING)
                 {
                     const MD5 ret = MessageDigest((uint8_t*)RxEthHdr + sizeof(ether_header), received_bytes-sizeof(ether_header));
                     if(m_MD5.GetPtr(ret) == nullptr)
                     {
                         m_MD5.Insert(ret, 0);
-                        while(m_Running == true && m_Timer.ScheduleTask(0, [self,ret](){
+                        while(m_Running == true && m_Timer.ScheduleTask(1000, [self,ret](){
                             while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
                                 self->m_MD5.Remove(ret);
                             }, 0) == false);
@@ -157,36 +226,11 @@ void BroadMulticastForward::Forward()
                     }
                     continue;
                 }
-                // Find UDP Hdr
-                if(RxIP4Hdr->version == 4 && RxIP4Hdr->protocol == 0x11)
-                {
-                    RxUDPHdr = (udphdr*)(m_RxBuffer+sizeof(ether_header)+RxIP4Hdr->ihl*4);
-                    if(RxUDPHdr->dest == htons(67) || RxUDPHdr->dest == htons(68))
-                    {
-                        RxDHCPv4Hdr = (DHCPv4*)((uint8_t*)RxUDPHdr + sizeof(udphdr));
-                    }
-                }
-                if((RxIP6Hdr->ip6_vfc&0xf0) == 0x60 && RxIP6Hdr->ip6_nxt == 0x11)
-                {
-                    RxUDPHdr = (udphdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ip6_hdr));
-                    if(RxUDPHdr->dest == htons(546) || RxUDPHdr->dest == htons(547))
-                    {
-                        RxDHCPv6Hdr = (DHCPv6*)((uint8_t*)RxUDPHdr + sizeof(udphdr));
-                    }
-                }
-                if(RxDHCPv4Hdr)
-                {
-                    std::cout<<"DHCPv4 from "<<m_InterfaceNames[rxinterface]<<std::endl;
-                }
-                if(RxDHCPv6Hdr)
-                {
-                    std::cout<<"DHCPv6 from "<<m_InterfaceNames[rxinterface]<<std::endl;
-                }
                 const MD5 ret = MessageDigest((uint8_t*)RxEthHdr + sizeof(ether_header), received_bytes-sizeof(ether_header));
                 if(m_MD5.GetPtr(ret) == nullptr)
                 {
                     m_MD5.Insert(ret, 0);
-                    while(m_Running == true && m_Timer.ScheduleTask(0, [self,ret](){
+                    while(m_Running == true && m_Timer.ScheduleTask(1000, [self,ret](){
                         while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
                             self->m_MD5.Remove(ret);
                         }, 0) == false);
