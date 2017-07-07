@@ -2,43 +2,15 @@
 #include <net/if.h>
 #include <netpacket/packet.h>
 #include <netinet/if_ether.h>
-#include <netinet/ip.h>
-#include <netinet/ip6.h>
-#include <netinet/icmp6.h>
-#include <netinet/udp.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
+#include <sys/ioctl.h>
 
 #include <cstring>
 #include <iostream>
 #include <iomanip>
 
 #include "BroadMulticastForward.h"
-
-struct DHCPv4
-{
-    uint8_t op;									/* 0: Message opcode/type */
-    uint8_t htype;								/* 1: Hardware addr type (net/if_types.h) */
-    uint8_t hlen;								/* 2: Hardware addr length */
-    uint8_t hops;								/* 3: Number of relay agent hops from client */
-    uint32_t xid;								/* 4: Transaction ID */
-    uint16_t secs;								/* 8: Seconds since client started looking */
-    uint16_t flags;								/* 10: Flag bits */
-    uint32_t ciaddr;							/* 12: Client IP address (if already in use) */
-    uint32_t yiaddr;							/* 16: Client IP address */
-    uint32_t siaddr;							/* 18: IP address of next server to talk to */
-    uint32_t giaddr;							/* 20: DHCP relay agent IP address */
-    uint8_t chaddr[16];						/* 24: Client hardware address */
-    char sname[64];			/* 40: Server name */
-    char file[128];				/* 104: Boot filename */
-    char options[1236];	/* 212: Optional parameters */
-};
-
-struct DHCPv6
-{
-    uint8_t Message;
-    uint8_t Data[1];
-}__attribute__((packed));
 
 BroadMulticastForward* BroadMulticastForward::g_Instance = new BroadMulticastForward();
 
@@ -91,7 +63,9 @@ std::string BroadMulticastForward::MessageDigestStr(const void* const data, cons
     md5_append(&state, (const md5_byte_t *)data, length);
     md5_finish(&state, digest);
     for(uint8_t di = 0; di < 16; ++di)
+    {
         sprintf(hex_output + di * 2, "%02x", digest[di]);
+    }
     return hex_output; 
 }
 
@@ -140,85 +114,33 @@ void BroadMulticastForward::Forward()
                 iphdr* const RxIP4Hdr  = (ntohs(RxEthHdr->ether_type) == ETH_P_IP ? 
                     (iphdr*)(m_RxBuffer+sizeof(ether_header)) :
                     nullptr);
-
                 ip6_hdr* const RxIP6Hdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IPV6 ?
                     (ip6_hdr*)(m_RxBuffer+sizeof(ether_header)) :
                     nullptr);
-
                 udphdr* const RxUDPHdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IP  ? 
                     ( RxIP4Hdr->protocol == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+RxIP4Hdr->ihl*4) : nullptr ):
                     ( RxIP6Hdr->ip6_nxt  == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ip6_hdr)) : nullptr ) );
-                if(RxUDPHdr && ntohs(RxUDPHdr->dest) == 20000)
-                {
-                    continue;
-                }
                 DHCPv4* const RxDHCPv4Hdr = (RxIP4Hdr && RxUDPHdr && (RxUDPHdr->dest == htons(67) || RxUDPHdr->dest == htons(68)) ?
                     (DHCPv4*)((uint8_t*)RxUDPHdr + sizeof(udphdr)) :
                     nullptr);
-                if(RxDHCPv4Hdr)
-                {
-                    if(RxDHCPv4Hdr->op == 1)
-                    {
-                        RxDHCPv4Hdr->flags = 0x80;
-                        RxUDPHdr->check = 0;
-                    }
-                    else // RxDHCPv4Hdr->op == 2
-                    {
-                        uint8_t* p_option = (uint8_t*)RxDHCPv4Hdr->options+4;
-                        bool ack = false;
-                        uint8_t* router_address = nullptr;
-                        while(p_option < (uint8_t*)RxUDPHdr + ntohs(RxUDPHdr->len))
-                        {
-                            if(p_option[0] == 53)
-                            {
-                                // Ack
-                                ack = true;
-                            }
-                            if(p_option[0] == 3)
-                            {
-                                // Router option;
-                                router_address = p_option+2;
-                            }
-                            if(ack && router_address)
-                            {
-                                break;
-                            }
-                            else
-                            {
-                                p_option = p_option + sizeof(uint8_t) + sizeof(uint8_t) + p_option[1];
-                            }
-                        }
-                        if(ack && router_address)
-                        {
-                            printf("DHCPv4 ACK [Router:%hhu.%hhu.%hhu.%hhu]\n", router_address[0], router_address[1], router_address[2], router_address[3]);
-                            sockaddr_in addr;
-                            socklen_t len = sizeof(addr);
-                            memset(&addr, 0, sizeof(addr));
-                            if(getsockname(m_Sockets[rxinterface], (sockaddr*)&addr, &len) != 0)
-                            {
-                                continue;
-                            }
-                            router_address[0] = ((uint8_t*)&addr)[0];
-                            router_address[1] = ((uint8_t*)&addr)[1];
-                            router_address[2] = ((uint8_t*)&addr)[2];
-                            router_address[3] = ((uint8_t*)&addr)[3];
-                            RxUDPHdr->check = 0;
-                        }
-
-                    }
-                }
                 DHCPv6* const RxDHCPv6Hdr = (RxIP6Hdr && RxUDPHdr && (RxUDPHdr->dest == htons(546) || RxUDPHdr->dest == htons(547)) ?
                     (DHCPv6*)((uint8_t*)RxUDPHdr + sizeof(udphdr)) :
                     nullptr);
-                std::cout<<(RxIP4Hdr?"[IPv4]":"")<<(RxIP6Hdr?"[IPv6]":"")<<(RxUDPHdr?"[UDP]":"")<<(RxDHCPv4Hdr?"[DHCPv4]("+std::to_string(RxDHCPv4Hdr->op)+")":"")<<(RxDHCPv6Hdr?"[DHCPv6]("+std::to_string(RxDHCPv6Hdr->Message)+")":"")<<std::endl;
-                
+                if(RxUDPHdr == nullptr)
+                {
+                    continue;
+                }
+                if(ntohs(RxUDPHdr->dest) == 20000)
+                {
+                    continue;
+                }
                 if(RxAddr.sll_pkttype == PACKET_OUTGOING)
                 {
                     const MD5 ret = MessageDigest((uint8_t*)RxEthHdr + sizeof(ether_header), received_bytes-sizeof(ether_header));
                     if(m_MD5.GetPtr(ret) == nullptr)
                     {
                         m_MD5.Insert(ret, 0);
-                        while(m_Running == true && m_Timer.ScheduleTask(1000, [self,ret](){
+                        while(m_Running == true && m_Timer.ScheduleTask(3000, [self,ret](){
                             while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
                                 self->m_MD5.Remove(ret);
                             }, 0) == false);
@@ -226,46 +148,30 @@ void BroadMulticastForward::Forward()
                     }
                     continue;
                 }
+
+                std::cout<<(RxIP4Hdr?"[IPv4]":"")<<(RxIP6Hdr?"[IPv6]":"")<<(RxUDPHdr?"[UDP]":"")<<(RxDHCPv4Hdr?"[DHCPv4]("+std::to_string(RxDHCPv4Hdr->op)+")":"")<<(RxDHCPv6Hdr?"[DHCPv6]("+std::to_string(RxDHCPv6Hdr->Message)+")":"")<<std::endl;
+
                 const MD5 ret = MessageDigest((uint8_t*)RxEthHdr + sizeof(ether_header), received_bytes-sizeof(ether_header));
                 if(m_MD5.GetPtr(ret) == nullptr)
                 {
                     m_MD5.Insert(ret, 0);
-                    while(m_Running == true && m_Timer.ScheduleTask(1000, [self,ret](){
+                    while(m_Running == true && m_Timer.ScheduleTask(3000, [self,ret](){
                         while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
                             self->m_MD5.Remove(ret);
                         }, 0) == false);
                     }, 0) == false);
-                    #if 0
-                    if(m_Sockets[WIRELESS] != -1)
+                    if(RxDHCPv4Hdr == nullptr && RxDHCPv6Hdr == nullptr) // Ordinary broadcast and multicast packets.
                     {
-                        sockaddr_ll ifaddr;
-                        memset(&ifaddr, 0, sizeof(ifaddr));
-                        ifaddr.sll_ifindex = if_nametoindex(m_InterfaceNames[WIRELESS].c_str()); //Interface number
-                        ifaddr.sll_family = AF_PACKET;
-                        memcpy(ifaddr.sll_addr, m_InterfaceHWAddresses[WIRELESS].address, ETHER_ADDR_LEN); //Physical layer address
-                        ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
-                        if(received_bytes!=sendto(m_Sockets[WIRELESS], m_RxBuffer, received_bytes, 0, (sockaddr *)&ifaddr, sizeof(ifaddr)))
-                        {
-                            std::cout<<"Cannot Send"<<std::endl;
-                        }
+                        HandleNormalPackets(m_RxBuffer, received_bytes, (NetworkInterfaceType)rxinterface);
                     }
-                    if(rxinterface == WIRELESS)
+                    else if(RxDHCPv4Hdr)
                     {
-                        if(m_Sockets[WIRED] != -1)
-                        {
-                            sockaddr_ll ifaddr;
-                            memset(&ifaddr, 0, sizeof(ifaddr));
-                            ifaddr.sll_ifindex = if_nametoindex(m_InterfaceNames[WIRED].c_str()); //Interface number
-                            ifaddr.sll_family = AF_PACKET;
-                            memcpy(ifaddr.sll_addr, m_InterfaceHWAddresses[WIRED].address, ETHER_ADDR_LEN); //Physical layer address
-                            ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
-                            if(received_bytes!=sendto(m_Sockets[WIRED], m_RxBuffer, received_bytes, 0, (sockaddr *)&ifaddr, sizeof(ifaddr)))
-                            {
-                                std::cout<<"Cannot Send"<<std::endl;
-                            }
-                        }
+                        HandleDHCPv4Packets(m_RxBuffer, RxUDPHdr, RxDHCPv4Hdr, received_bytes, (NetworkInterfaceType)rxinterface);
                     }
-                    #endif
+                    else if(RxDHCPv6Hdr)
+                    {
+                        HandleDHCPv6Packets(m_RxBuffer, RxUDPHdr, RxDHCPv6Hdr, received_bytes, (NetworkInterfaceType)rxinterface);
+                    }
                 }
             }
         }
@@ -276,6 +182,128 @@ void BroadMulticastForward::Forward()
             self->Forward();
         }, 1) == false);
     }, 1) == false);
+}
+
+void BroadMulticastForward::HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype)
+{
+    std::cout<<__FUNCTION__<<std::endl;
+    if(iftype == WIRELESS)
+    {
+        Send(WIRELESS, pkt, pktlen);
+        Send(WIRED, pkt, pktlen);
+    }
+    else if(iftype == WIRED)
+    {
+        Send(WIRELESS, pkt, pktlen);
+    }
+}
+
+void BroadMulticastForward::HandleDHCPv4Packets(void* const pkt, udphdr* const udp, DHCPv4* const dhcp, const uint32_t pktlen, const NetworkInterfaceType iftype)
+{
+    std::cout<<__FUNCTION__<<std::endl;
+    if(dhcp->op == 1) // from client to server
+    {
+        dhcp->flags = 0x80;
+        if(iftype == WIRELESS)
+        {
+            udp->check = 0;
+            Send(WIRELESS, pkt, pktlen);
+            Send(WIRED, pkt, pktlen);
+        }
+        else if(iftype == WIRED)
+        {
+            return;
+        }
+    }
+    else // RxDHCPv4Hdr->op == 2 // from server to client
+    {
+        uint8_t* p_option = (uint8_t*)dhcp->options+4;
+        bool ack = false;
+        uint8_t* router_address = nullptr;
+        while(p_option < (uint8_t*)pkt + pktlen)
+        {
+            if(p_option[0] == 53)
+            {
+                // Ack
+                ack = true;
+            }
+            if(p_option[0] == 3)
+            {
+                // Router option;
+                router_address = p_option+2;
+            }
+            if(ack && router_address)
+            {
+                break;
+            }
+            else
+            {
+                p_option = p_option + sizeof(uint8_t) + sizeof(uint8_t) + p_option[1];
+            }
+        }
+        if(ack && router_address)
+        {
+            printf("DHCPv4 ACK [Router:%hhu.%hhu.%hhu.%hhu] -> ", router_address[0], router_address[1], router_address[2], router_address[3]);
+            int fd;
+            ifreq ifr;
+            memset(&ifr, 0, sizeof(ifr));
+            if((fd = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+            {
+                return;
+            }
+            ifr.ifr_addr.sa_family = PF_INET;
+            strcpy(ifr.ifr_name, m_InterfaceNames[iftype].c_str());
+            if(ioctl(fd, SIOCGIFADDR, &ifr) != 0)
+            {
+                close(fd);
+                return;
+            }
+            close(fd);
+            router_address[0] = ((uint8_t*)&((sockaddr_in*)&ifr.ifr_addr)->sin_addr)[0];
+            router_address[1] = ((uint8_t*)&((sockaddr_in*)&ifr.ifr_addr)->sin_addr)[1];
+            router_address[2] = ((uint8_t*)&((sockaddr_in*)&ifr.ifr_addr)->sin_addr)[2];
+            router_address[3] = ((uint8_t*)&((sockaddr_in*)&ifr.ifr_addr)->sin_addr)[3];
+            printf("[Router:%hhu.%hhu.%hhu.%hhu]\n", router_address[0], router_address[1], router_address[2], router_address[3]);
+        }
+        if(iftype == WIRELESS)
+        {
+            udp->check = 0;
+            Send(WIRELESS, pkt, pktlen);
+        }
+        else if(iftype == WIRED)
+        {
+            udp->check = 0;
+            Send(WIRELESS, pkt, pktlen);
+        }
+    }
+}
+
+void BroadMulticastForward::HandleDHCPv6Packets(void* const pkt, udphdr* const udp, DHCPv6* const dhcp, const uint32_t pktlen, const NetworkInterfaceType iftype)
+{
+    std::cout<<__FUNCTION__<<std::endl;
+}
+
+int BroadMulticastForward::Send(const NetworkInterfaceType iftype, void* const pkt, const uint32_t pktlen)
+{
+#if 0
+    if(iftype >= MAX_NETWORK_INTERFACES)
+    {
+        return -1;
+    }
+    if(m_Sockets[iftype] == -1)
+    {
+        return -1;
+    }
+    sockaddr_ll ifaddr;
+    memset(&ifaddr, 0, sizeof(ifaddr));
+    ifaddr.sll_ifindex = if_nametoindex(m_InterfaceNames[iftype].c_str()); //Interface number
+    ifaddr.sll_family = AF_PACKET;
+    memcpy(ifaddr.sll_addr, m_InterfaceHWAddresses[iftype].address, ETHER_ADDR_LEN); //Physical layer address
+    ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
+    return sendto(m_Sockets[iftype], pkt, pktlen, 0, (sockaddr *)&ifaddr, sizeof(ifaddr));
+#else
+    return -1;
+#endif
 }
 
 void BroadMulticastForward::SetNetworkInterface(const NetworkInterfaceType type, const std::string iface)
