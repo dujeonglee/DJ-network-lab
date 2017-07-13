@@ -357,7 +357,7 @@ void ARPSpoof::SendNeighborAdvertisement()
 
     std::cout<<"SendNeighborAdvertisement"<<std::endl;
     ARPSpoof* const self = this;
-    while(false == m_Timer.ScheduleTask(1000, [self](){
+    while(INVALID_TIMER_ID == m_Timer.ScheduleTask(1000, [self](){
         self->SendNeighborAdvertisement();
     }));
 }

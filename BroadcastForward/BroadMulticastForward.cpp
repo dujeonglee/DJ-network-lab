@@ -140,11 +140,9 @@ void BroadMulticastForward::Forward()
                     if(m_MD5.GetPtr(ret) == nullptr)
                     {
                         m_MD5.Insert(ret, 0);
-                        while(m_Running == true && m_Timer.ScheduleTask(3000, [self,ret](){
-                            while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
-                                self->m_MD5.Remove(ret);
-                            }, 0) == false);
-                        }, 0) == false);
+                        while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(3000, [self,ret](){
+                            self->m_MD5.Remove(ret);
+                        }, 0));
                     }
                     continue;
                 }
@@ -155,11 +153,9 @@ void BroadMulticastForward::Forward()
                 if(m_MD5.GetPtr(ret) == nullptr)
                 {
                     m_MD5.Insert(ret, 0);
-                    while(m_Running == true && m_Timer.ScheduleTask(3000, [self,ret](){
-                        while(self->m_Running == true && self->m_ThreadPool.Enqueue([self,ret](){
-                            self->m_MD5.Remove(ret);
-                        }, 0) == false);
-                    }, 0) == false);
+                    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(3000, [self,ret](){
+                        self->m_MD5.Remove(ret);
+                    }, 0));
                     if(RxDHCPv4Hdr == nullptr && RxDHCPv6Hdr == nullptr) // Ordinary broadcast and multicast packets.
                     {
                         HandleNormalPackets(m_RxBuffer, received_bytes, (NetworkInterfaceType)rxinterface);
@@ -177,11 +173,9 @@ void BroadMulticastForward::Forward()
         }
     }
 
-    while(m_Running == true && m_Timer.ScheduleTask(0, [self](){
-        while(self->m_Running == true && self->m_ThreadPool.Enqueue([self](){
+    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ImmediateTask([self](){
             self->Forward();
-        }, 1) == false);
-    }, 1) == false);
+    }, 1));
 }
 
 void BroadMulticastForward::HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype)
@@ -326,10 +320,7 @@ BroadMulticastForward::BroadMulticastForward()
     m_Sockets[WIRED] = -1;
 
     m_MD5.Clear();
-    m_ThreadPool.Stop();
     m_Timer.Stop();
-
-    m_ThreadPool.Start();
     m_Timer.Start();
 }
 
@@ -380,7 +371,6 @@ bool BroadMulticastForward::Start()
             return false;
         }
     }
-    m_ThreadPool.Start();
     m_Timer.Start();
     m_Running = true;
     Forward();
@@ -391,7 +381,6 @@ void BroadMulticastForward::Stop()
 {
     m_Running = false;
     m_MD5.Clear();
-    m_ThreadPool.Stop();
     m_Timer.Stop();
     if(m_Sockets[WIRELESS] > 0)
     {

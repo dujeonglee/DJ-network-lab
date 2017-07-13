@@ -10,7 +10,6 @@
 
 #include "md5.h"
 #include "AVLTree.h"
-#include "ThreadPool.h"
 #include "SingleShotTimer.h"
 
 struct MD5
@@ -74,7 +73,6 @@ private:/*PRIVATE CLASS VARIABLE*/
     unsigned char m_RxBuffer[1024];
 
     AVLTree<MD5, uint8_t> m_MD5;
-    ThreadPool<2, 1> m_ThreadPool;
     SingleShotTimer<2, 1> m_Timer;
 
 private:/*PRIVATE CLASS FUNCTION*/
