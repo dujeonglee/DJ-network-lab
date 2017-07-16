@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <utility> 
+#include "SingleShotTimer.h"
 
 enum NetworkType
 {
@@ -13,10 +14,11 @@ class UDPSocket
 {
 private:
     int m_Sockets[2];
-    std::thread m_RxThread;
-    bool m_RxRunning;
+    SingleShotTimer<2,1> m_TaskQueue;
+    void AwatingPackets(std::function<void(const NetworkType type, const void* payload, int payloadsize, void* const addr, const int addrlen)> cb);
 public:
-    UDPSocket(const std::string port);
     ~UDPSocket();
-    int Send(const std::string address, const std::string port, const void* payload, int payloadsize);    
+    void Send(const std::string address, const std::string port, const void* payload, int payloadsize);
+    bool Listen(const std::string port, std::function<void(const NetworkType type, const void* payload, int payloadsize, void* const addr, const int addrlen)> cb);
+    void Halt();
 };
