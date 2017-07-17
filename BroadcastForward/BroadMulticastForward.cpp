@@ -117,6 +117,7 @@ void BroadMulticastForward::Forward()
                 ip6_hdr* const RxIP6Hdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IPV6 ?
                     (ip6_hdr*)(m_RxBuffer+sizeof(ether_header)) :
                     nullptr);
+                icmp6_hdr* const RXICMPv6Hdr = (icmp6_hdr*)(RxIP6Hdr && RxIP6Hdr->ip6_nxt == 0x3A?(uint8_t*)RxIP6Hdr + sizeof(ip6_hdr):nullptr);
                 udphdr* const RxUDPHdr = ( ntohs(RxEthHdr->ether_type) == ETH_P_IP  ? 
                     ( RxIP4Hdr->protocol == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+RxIP4Hdr->ihl*4) : nullptr ):
                     ( RxIP6Hdr->ip6_nxt  == 0x11? (udphdr*)(m_RxBuffer+sizeof(ether_header)+sizeof(ip6_hdr)) : nullptr ) );
@@ -126,11 +127,11 @@ void BroadMulticastForward::Forward()
                 DHCPv6* const RxDHCPv6Hdr = (RxIP6Hdr && RxUDPHdr && (RxUDPHdr->dest == htons(546) || RxUDPHdr->dest == htons(547)) ?
                     (DHCPv6*)((uint8_t*)RxUDPHdr + sizeof(udphdr)) :
                     nullptr);
-                if(RxUDPHdr == nullptr)
+                if(RxUDPHdr == nullptr && RXICMPv6Hdr == nullptr)
                 {
                     continue;
                 }
-                if(ntohs(RxUDPHdr->dest) == 20000)
+                if(RxUDPHdr && ntohs(RxUDPHdr->dest) == 20000)
                 {
                     continue;
                 }
@@ -147,8 +148,6 @@ void BroadMulticastForward::Forward()
                     continue;
                 }
 
-                std::cout<<(RxIP4Hdr?"[IPv4]":"")<<(RxIP6Hdr?"[IPv6]":"")<<(RxUDPHdr?"[UDP]":"")<<(RxDHCPv4Hdr?"[DHCPv4]("+std::to_string(RxDHCPv4Hdr->op)+")":"")<<(RxDHCPv6Hdr?"[DHCPv6]("+std::to_string(RxDHCPv6Hdr->Message)+")":"")<<std::endl;
-
                 const MD5 ret = MessageDigest((uint8_t*)RxEthHdr + sizeof(ether_header), received_bytes-sizeof(ether_header));
                 if(m_MD5.GetPtr(ret) == nullptr)
                 {
@@ -156,17 +155,22 @@ void BroadMulticastForward::Forward()
                     while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(3000, [self,ret](){
                         self->m_MD5.Remove(ret);
                     }, 0));
-                    if(RxDHCPv4Hdr == nullptr && RxDHCPv6Hdr == nullptr) // Ordinary broadcast and multicast packets.
-                    {
-                        HandleNormalPackets(m_RxBuffer, received_bytes, (NetworkInterfaceType)rxinterface);
-                    }
-                    else if(RxDHCPv4Hdr)
+                    std::cout<<"Rx Packet"<<std::endl;
+                    if(RxDHCPv4Hdr)
                     {
                         HandleDHCPv4Packets(m_RxBuffer, RxUDPHdr, RxDHCPv4Hdr, received_bytes, (NetworkInterfaceType)rxinterface);
                     }
                     else if(RxDHCPv6Hdr)
                     {
                         HandleDHCPv6Packets(m_RxBuffer, RxUDPHdr, RxDHCPv6Hdr, received_bytes, (NetworkInterfaceType)rxinterface);
+                    }
+                    else if(RXICMPv6Hdr) // Ordinary broadcast and multicast packets.
+                    {
+                        HandleICMPv6Packets(m_RxBuffer, RXICMPv6Hdr, received_bytes, (NetworkInterfaceType)rxinterface);
+                    }
+                    else
+                    {
+                        HandleNormalPackets(m_RxBuffer, received_bytes, (NetworkInterfaceType)rxinterface);
                     }
                 }
             }
@@ -178,17 +182,28 @@ void BroadMulticastForward::Forward()
     }, 1));
 }
 
-void BroadMulticastForward::HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype)
+void BroadMulticastForward::SendRA()
 {
     std::cout<<__FUNCTION__<<std::endl;
-    if(iftype == WIRELESS)
+    if(m_ICMPv6RALength > 0)
     {
-        Send(WIRELESS, pkt, pktlen);
-        Send(WIRED, pkt, pktlen);
+        Send(WIRELESS, m_ICMPv6RA, m_ICMPv6RALength);
     }
-    else if(iftype == WIRED)
+    BroadMulticastForward * const self = this;
+    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(1000, [self](){
+            self->SendRA();
+    }, 1));
+}
+
+void BroadMulticastForward::HandleICMPv6Packets(void* const pkt, icmp6_hdr* const icmpv6, const uint32_t pktlen, const NetworkInterfaceType iftype)
+{
+    std::cout<<__FUNCTION__<<std::endl;
+    if(icmpv6->icmp6_type == ND_ROUTER_ADVERT)
     {
-        Send(WIRELESS, pkt, pktlen);
+        memcpy(m_ICMPv6RA, pkt, pktlen);
+        m_ICMPv6RALength = pktlen;
+
+        Send(WIRELESS, m_ICMPv6RA, m_ICMPv6RALength);
     }
 }
 
@@ -277,9 +292,22 @@ void BroadMulticastForward::HandleDHCPv6Packets(void* const pkt, udphdr* const u
     std::cout<<__FUNCTION__<<std::endl;
 }
 
+void BroadMulticastForward::HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype)
+{
+    std::cout<<__FUNCTION__<<std::endl;
+    if(iftype == WIRELESS)
+    {
+        Send(WIRELESS, pkt, pktlen);
+        Send(WIRED, pkt, pktlen);
+    }
+    else if(iftype == WIRED)
+    {
+        Send(WIRELESS, pkt, pktlen);
+    }
+}
+
 int BroadMulticastForward::Send(const NetworkInterfaceType iftype, void* const pkt, const uint32_t pktlen)
 {
-#if 0
     if(iftype >= MAX_NETWORK_INTERFACES)
     {
         return -1;
@@ -295,9 +323,6 @@ int BroadMulticastForward::Send(const NetworkInterfaceType iftype, void* const p
     memcpy(ifaddr.sll_addr, m_InterfaceHWAddresses[iftype].address, ETHER_ADDR_LEN); //Physical layer address
     ifaddr.sll_halen = htons(ETHER_ADDR_LEN); //Length of address
     return sendto(m_Sockets[iftype], pkt, pktlen, 0, (sockaddr *)&ifaddr, sizeof(ifaddr));
-#else
-    return -1;
-#endif
 }
 
 void BroadMulticastForward::SetNetworkInterface(const NetworkInterfaceType type, const std::string iface)
@@ -318,6 +343,7 @@ BroadMulticastForward::BroadMulticastForward()
     m_Running = false;
     m_Sockets[WIRELESS] = -1;
     m_Sockets[WIRED] = -1;
+    m_ICMPv6RALength = 0;
 
     m_MD5.Clear();
     m_Timer.Stop();
@@ -331,6 +357,7 @@ BroadMulticastForward::~BroadMulticastForward()
 
 bool BroadMulticastForward::Start()
 {
+    Stop();
     if(m_InterfaceNames[WIRELESS].compare("") == 0 && m_InterfaceNames[WIRED].compare("") == 0)
     {
         return false;
@@ -374,6 +401,7 @@ bool BroadMulticastForward::Start()
     m_Timer.Start();
     m_Running = true;
     Forward();
+    SendRA();
     return true;
 }
 
@@ -385,9 +413,11 @@ void BroadMulticastForward::Stop()
     if(m_Sockets[WIRELESS] > 0)
     {
         close(m_Sockets[WIRELESS]);
+        m_Sockets[WIRELESS] = -1;
     }
     if(m_Sockets[WIRED] > 0)
     {
         close(m_Sockets[WIRED]);
+        m_Sockets[WIRED] = -1;
     }
 }

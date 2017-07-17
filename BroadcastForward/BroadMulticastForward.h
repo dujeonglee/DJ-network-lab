@@ -1,9 +1,9 @@
 #ifndef _BROADCAST_FORWARD_
 #define _BROADCAST_FORWARD_
-#include <netinet/ip.h>
+#include <linux/ip.h>
 #include <netinet/ip6.h>
-//#include <netinet/icmp6.h>
-#include <netinet/udp.h>
+#include <netinet/icmp6.h>
+#include <linux/udp.h>
 
 #include <cstdint>
 #include <string>
@@ -61,7 +61,7 @@ private:/*PRIVATE STATIC VARIABLE*/
 public:/*PUBLIC STATIC FUNCTION*/
     static BroadMulticastForward* Instance();
 private:/*PRIVATE STATIC FUNCTION*/
-    static bool HWAddress(const char* const ifname, unsigned char* const hw_address);
+    static bool HWAddress(const char* const ifname, uint8_t* const hw_address);
     static MD5 MessageDigest(const void* const data, const uint32_t length);
     static std::string MessageDigestStr(const void* const data, const uint32_t length);
 private:/*PRIVATE CLASS VARIABLE*/
@@ -69,8 +69,10 @@ private:/*PRIVATE CLASS VARIABLE*/
     int m_Sockets[MAX_NETWORK_INTERFACES];
     std::string m_InterfaceNames[MAX_NETWORK_INTERFACES];
     HWAddressType m_InterfaceHWAddresses[MAX_NETWORK_INTERFACES];
-    unsigned char m_TxBuffer[1024];
-    unsigned char m_RxBuffer[1024];
+    uint8_t m_TxBuffer[1024];
+    uint8_t m_RxBuffer[1024];
+    uint8_t m_ICMPv6RA[256];
+    uint32_t m_ICMPv6RALength;
 
     AVLTree<MD5, uint8_t> m_MD5;
     SingleShotTimer<2, 1> m_Timer;
@@ -79,9 +81,11 @@ private:/*PRIVATE CLASS FUNCTION*/
     BroadMulticastForward();
     ~BroadMulticastForward();
     void Forward();
-    void HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype);
+    void SendRA();
+    void HandleICMPv6Packets(void* const pkt, icmp6_hdr* const icmpv6, const uint32_t pktlen, const NetworkInterfaceType iftype);
     void HandleDHCPv4Packets(void* const pkt, udphdr* const udp, DHCPv4* const dhcp, const uint32_t pktlen, const NetworkInterfaceType iftype);
     void HandleDHCPv6Packets(void* const pkt, udphdr* const udp, DHCPv6* const dhcp, const uint32_t pktlen, const NetworkInterfaceType iftype);
+    void HandleNormalPackets(void* const pkt, const uint32_t pktlen, const NetworkInterfaceType iftype);
     int Send(const NetworkInterfaceType iftype, void* const pkt, const uint32_t pktlen);
 public:
     void SetNetworkInterface(const NetworkInterfaceType, const std::string);
