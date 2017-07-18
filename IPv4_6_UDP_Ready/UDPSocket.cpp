@@ -1,12 +1,15 @@
+#include <unistd.h>
 #include <string.h>
 #include <netdb.h>
 #include <sys/select.h>
+#include <sys/ioctl.h>
 #include <functional>
 #include <iostream>
 #include "UDPSocket.h"
 
-//#include <arpa/inet.h>
-//#include <unistd.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <ifaddrs.h>
 //#include <sys/types.h> 
 //#include <sys/socket.h>
 
@@ -244,11 +247,11 @@ void UDPSocket::Send(const std::string address, const std::string port, const st
         {
             if(interface.compare(""))
             {
-                if(setsockopt(m_TxSockets[IPV4Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
+                /*if(setsockopt(m_TxSockets[IPV4Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
                 {
                     freeaddrinfo(ret);
                     return;
-                }
+                }*/
             }
             std::cout<<"Send IPv4"<<std::endl;
             sendto(m_TxSockets[IPV4Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
@@ -257,11 +260,11 @@ void UDPSocket::Send(const std::string address, const std::string port, const st
         {
             if(interface.compare(""))
             {
-                if(setsockopt(m_TxSockets[IPV6Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
+                /*if(setsockopt(m_TxSockets[IPV6Network], SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(), strlen(interface.c_str())) == -1)
                 {
                     freeaddrinfo(ret);
                     return;
-                }
+                }*/
             }
             std::cout<<"Send IPv6"<<std::endl;
             sendto(m_RxSockets[IPV6Network], payload, (size_t)payloadsize, 0, (sockaddr*)iter->ai_addr, iter->ai_addrlen);
@@ -308,4 +311,103 @@ void UDPSocket::Recv()
             m_IPv6RxCallback(buffer, ret, &sender);
         }
     }
+}
+
+const std::string UDPSocket::GetIPv4Address(const std::string interface)
+{
+    ifaddrs* ifa = nullptr;
+    ifaddrs* iter = nullptr;
+    char str[INET_ADDRSTRLEN] = {0};
+
+    const int rc = getifaddrs(&ifa);
+    if (rc==0) {
+        for(iter = ifa ; iter != nullptr ; iter = iter->ifa_next) {
+            if(iter->ifa_addr && 
+                iter->ifa_addr->sa_family == AF_INET && 
+                std::string(iter->ifa_name).compare(interface) == 0)
+            {
+                 break;
+            }
+        }
+    }
+    if(iter)
+    {
+        inet_ntop(iter->ifa_addr->sa_family, &((sockaddr_in*)iter->ifa_addr)->sin_addr, str, sizeof(str));
+    }
+    freeifaddrs(ifa);
+    return std::string(str);
+}
+
+const std::string UDPSocket::GetIPv6Address(const std::string interface)
+{
+    ifaddrs* ifa = nullptr;
+    ifaddrs* iter = nullptr;
+    char str[INET6_ADDRSTRLEN] = {0};
+
+    const int rc = getifaddrs(&ifa);
+    if (rc==0) {
+        for(iter = ifa ; iter != nullptr ; iter = iter->ifa_next) {
+            if(iter->ifa_addr && 
+                iter->ifa_addr->sa_family == AF_INET6 && 
+                std::string(iter->ifa_name).compare(interface) == 0)
+            {
+                 break;
+            }
+        }
+    }
+    if(iter)
+    {
+        inet_ntop(iter->ifa_addr->sa_family, &((sockaddr_in6*)iter->ifa_addr)->sin6_addr, str, sizeof(str));
+    }
+    freeifaddrs(ifa);
+    return std::string(str);
+}
+
+const std::string UDPSocket::GetIPv4Netmask(const std::string interface)
+{
+    ifaddrs* ifa = nullptr;
+    ifaddrs* iter = nullptr;
+    char str[INET_ADDRSTRLEN] = {0};
+    const int rc = getifaddrs(&ifa);
+    if (rc==0) {
+        for(iter = ifa ; iter != nullptr ; iter = iter->ifa_next) {
+            if(iter->ifa_netmask && 
+                iter->ifa_netmask->sa_family == AF_INET && 
+                std::string(iter->ifa_name).compare(interface) == 0)
+            {
+                break;
+            }
+        }
+    }
+    if(iter)
+    {
+        inet_ntop(iter->ifa_netmask->sa_family, &((sockaddr_in*)iter->ifa_netmask)->sin_addr, str, sizeof(str));
+    }
+    freeifaddrs(ifa);
+    return std::string(str);
+}
+
+const std::string UDPSocket::GetIPv6Netmask(const std::string interface)
+{
+    ifaddrs* ifa = nullptr;
+    ifaddrs* iter = nullptr;
+    char str[INET6_ADDRSTRLEN] = {0};
+
+    const int rc = getifaddrs(&ifa);
+    if (rc==0) {
+        for(iter = ifa ; iter != nullptr ; iter = iter->ifa_next) {
+            if(iter->ifa_netmask && 
+                iter->ifa_netmask->sa_family == AF_INET6 && 
+                std::string(iter->ifa_name).compare(interface) == 0)
+            {
+                 break;
+            }
+        }
+    }
+    if(iter)
+    {
+        inet_ntop(iter->ifa_netmask->sa_family, &((sockaddr_in6*)iter->ifa_netmask)->sin6_addr, str, sizeof(str));
+    }
+    freeifaddrs(ifa);
+    return std::string(str);
 }

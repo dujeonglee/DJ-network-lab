@@ -26,4 +26,8 @@ public:
     void RegisterIPv6RxCallback(std::function<void(void* const, const uint32_t, sockaddr_in6* const)> cb);
     void Send(const std::string address, const std::string port, const std::string interface, const void* payload, int payloadsize);
     void Recv();
+    static const std::string GetIPv4Address(const std::string);
+    static const std::string GetIPv6Address(const std::string);
+    static const std::string GetIPv4Netmask(const std::string);
+    static const std::string GetIPv6Netmask(const std::string);
 };
