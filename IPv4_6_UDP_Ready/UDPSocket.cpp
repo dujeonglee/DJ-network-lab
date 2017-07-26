@@ -97,6 +97,13 @@ bool UDPSocket::Start(const std::string listenport, bool broadcastflag)
                 freeaddrinfo(ret);
                 return false;
             }
+            int opt = 1;
+            if(setsockopt(m_RxSockets[IPV4Network], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(option)) == -1)
+            {
+                Stop();
+                freeaddrinfo(ret);
+                return false;
+            }
             if(bind(m_RxSockets[IPV4Network], iter->ai_addr, iter->ai_addrlen) != 0) 
             {
                 Stop();
@@ -115,7 +122,20 @@ bool UDPSocket::Start(const std::string listenport, bool broadcastflag)
                 freeaddrinfo(ret);
                 return false;
             }
-            setsockopt(m_RxSockets[IPV6Network], IPPROTO_IPV6, IPV6_V6ONLY, (char *)&opt, sizeof(opt)); 
+            opt = 1;
+            if(setsockopt(m_RxSockets[IPV6Network], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(option)) == -1)
+            {
+                Stop();
+                freeaddrinfo(ret);
+                return false;
+            }
+            opt = 1;
+            if(setsockopt(m_RxSockets[IPV6Network], IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt)) == -1)
+            {
+                Stop();
+                freeaddrinfo(ret);
+                return false;
+            }
             if(bind(m_RxSockets[IPV6Network], iter->ai_addr, iter->ai_addrlen) != 0) 
             {
                 Stop();
