@@ -1,28 +1,32 @@
-.PHONY : all debug release
+.PHONY : all debug release backup
 .SUFFIXES : .cpp .o
 
 SOURCES  := $(wildcard *.cpp)
-INCLUDES := 
+INCLUDES := -I./basiclibrary/singleshottimer -I./basiclibrary/threadpool
 OBJECTS  := $(SOURCES:.cpp=.o)
-LIBRARY :=
+LIBRARY := -lpthread
 CPP := g++
-TARGET = route_monitor
+TARGET = run
 
 all : debug
 
 $(TARGET) : $(OBJECTS)
-	$(CPP) -o $@  $^  $(LIBRARY)
+	$(CPP) -o $@  $^ $(LIBRARY)
 
-.cc.o : $(SOURCES)
-	$(CPP) $(CPPFLAGS) $(INCLUDES) $(SOURCES)
+.cpp.o : $(SOURCES)
+	$(CPP) $(SOURCES) $(CPPFLAGS) $(INCLUDES) $(LIBRARY)
+
+./basiclibrary/.git/config : 
+	git clone https://github.com/dujeonglee/basiclibrary.git
 
 clean :
-	rm -rf $(OBJECTS) $(TARGET) *~
+	rm -rf $(OBJECTS) $(TARGET) *~ gmon.out
 
-debug : CPPFLAGS := -g -c -Wall -Werror -std=c++11
+debug : CPPFLAGS := -g -c -Wall -std=c++11
+debug : ./basiclibrary/.git/config
 debug : $(TARGET)
-	./$(TARGET)
 
-release : CPPFLAGS := -O0 -c -Wall -Werror -std=c++11
+release : CPPFLAGS := -O3 -c -Wall -std=c++11
+release : ./basiclibrary/.git/config
 release : $(TARGET)
-	./$(TARGET)
+

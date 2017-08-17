@@ -114,12 +114,15 @@ void RouteMonitor::MonitorRoutingUpdate(){
         else if(route_entry->rtm_family == AF_INET6)
         {
             printf("IPv6 Route Update : %s ", ((uint32_t)nlh->nlmsg_type==RTM_DELROUTE?"DELETE":"ADD"));
-            for(uint8_t i = 0 ; i < 16 ; i++)
+            if(destination)
             {
-                printf("%02hhx", destination[i]);
-                if(i % 2 == 1 && i != 15)
+                for(uint8_t i = 0 ; i < 16 ; i++)
                 {
-                    printf(":");
+                    printf("%02hhx", destination[i]);
+                    if(i % 2 == 1 && i != 15)
+                    {
+                        printf(":");
+                    }
                 }
             }
             printf("/%hhu", route_entry->rtm_dst_len);
