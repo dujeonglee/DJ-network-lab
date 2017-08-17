@@ -6,7 +6,7 @@ INCLUDES := -I./basiclibrary/avltree -I./basiclibrary/threadpool -I./basiclibrar
 OBJECTS  := $(SOURCES:.cpp=.o)
 LIBRARY := -lpthread
 CPP := g++
-TARGET = arp_spoof_attck
+TARGET = attack
 
 all : debug
 

@@ -30,6 +30,7 @@ private:/*PRIVATE CLASS VARIABLE*/
     unsigned char m_TxBuffer[1024];
     unsigned char m_RxBuffer[1024];
     std::string m_IfName;
+    SingleShotTimer<1,1> m_Queue;
 private:/*PRIVATE CLASS FUNCTION*/
     XSpoof();
     ~XSpoof();

@@ -1,9 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ARPSpoof.h"
+#include "XSpoof.h"
 
 int main(int argc, char* argv[]){
-    ARPSpoof::Instance()->DoARPSpoof((argc > 1?argv[1]:NULL), (argc > 2?argv[2]:NULL));
+    if(argc != 2)
+    {
+        printf("sudo %s interface\n", argv[0]);
+        return 0;
+    }
+    XSpoof::Instance()->Start(std::string(argv[1]));
+    while(1);
     return 0;
 }
