@@ -7,17 +7,6 @@
 UDPSocket Socket;
 SingleShotTimer<2,1> Queue;
 
-void Recv()
-{
-    std::cout<<__FUNCTION__<<std::endl;
-    Socket.Recv();
-    Queue.ImmediateTask([](){
-        Recv();
-    });
-}
-
-
-
 int main(int argc, char **argv) 
 { 
     if(false == Socket.Start(std::string(argv[1]), false))
@@ -32,7 +21,10 @@ int main(int argc, char **argv)
         // IPv6
         std::cout<<"IPv6:"<<(char*)buffer<<std::endl;
     });
-    Recv();
+    Queue.PeriodicTask(0, []()->bool{
+        Socket.Recv();
+        return true;
+    });
     while(1)
     {
         if(argc == 4)
