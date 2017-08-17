@@ -22,11 +22,11 @@ $(TARGET) : $(OBJECTS)
 clean :
 	rm -rf $(OBJECTS) $(TARGET) *~
 
-debug : CPPFLAGS := -g -c -Wall -Werror -std=c++0x -DNONPRIMITIVE_KEY
+debug : CPPFLAGS := -g -c -Wall -Werror -std=c++0x
 debug : ./basiclibrary/.git/config
 debug : $(TARGET)
 
 
-release : CPPFLAGS := -O3 -c -Wall -Werror -std=c++0x -DNONPRIMITIVE_KEY
+release : CPPFLAGS := -O3 -c -Wall -Werror -std=c++0x
 release : ./basiclibrary/.git/config
 release : $(TARGET)

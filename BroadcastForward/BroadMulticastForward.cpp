@@ -176,10 +176,6 @@ void BroadMulticastForward::Forward()
             }
         }
     }
-
-    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ImmediateTask([self](){
-            self->Forward();
-    }, 1));
 }
 
 void BroadMulticastForward::SendRA()
@@ -189,10 +185,6 @@ void BroadMulticastForward::SendRA()
     {
         Send(WIRELESS, m_ICMPv6RA, m_ICMPv6RALength);
     }
-    BroadMulticastForward * const self = this;
-    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(1000, [self](){
-            self->SendRA();
-    }, 1));
 }
 
 void BroadMulticastForward::HandleICMPv6Packets(void* const pkt, icmp6_hdr* const icmpv6, const uint32_t pktlen, const NetworkInterfaceType iftype)
@@ -400,8 +392,14 @@ bool BroadMulticastForward::Start()
     }
     m_Timer.Start();
     m_Running = true;
-    Forward();
-    SendRA();
+    m_Timer.PeriodicTask(0, [this]()->bool{
+        Forward();
+        return true;
+    });
+    m_Timer.PeriodicTask(1000, [this]()->bool{
+        SendRA();
+        return true;
+    });
     return true;
 }
 
