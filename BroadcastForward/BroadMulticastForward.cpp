@@ -141,7 +141,7 @@ void BroadMulticastForward::Forward()
                     if(m_MD5.GetPtr(ret) == nullptr)
                     {
                         m_MD5.Insert(ret, 0);
-                        while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(3000, [self,ret](){
+                        while(m_Running == true && INVALID_TASK_ID == m_Timer.ScheduleTask(3000, [self,ret](){
                             self->m_MD5.Remove(ret);
                         }, 0));
                     }
@@ -152,7 +152,7 @@ void BroadMulticastForward::Forward()
                 if(m_MD5.GetPtr(ret) == nullptr)
                 {
                     m_MD5.Insert(ret, 0);
-                    while(m_Running == true && INVALID_TIMER_ID == m_Timer.ScheduleTask(3000, [self,ret](){
+                    while(m_Running == true && INVALID_TASK_ID == m_Timer.ScheduleTask(3000, [self,ret](){
                         self->m_MD5.Remove(ret);
                     }, 0));
                     std::cout<<"Rx Packet"<<std::endl;
