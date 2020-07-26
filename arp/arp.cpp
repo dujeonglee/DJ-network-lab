@@ -11,11 +11,11 @@
 
 arp*	arp::_instance = 0;
 
-arp* arp::instance(const char* const ifname){
+arp* arp::instance(){
     if(_instance){
         return _instance;
     }
-    _instance = new arp(ifname);
+    _instance = new arp();
     if(_instance == 0){
         exit(-1);
     }
@@ -147,21 +147,14 @@ int arp::raw_arp_send(const unsigned char* const eth_dst,
     return ret;
 }
 
-arp::arp(const char* const ifname){
+void arp::start_rcv(const char* const ifname){
     sockaddr_ll sll;
 
-    _send_socket = -1;
     _rcv_socket = -1;
-
-    _send_socket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
-    if(_send_socket < 0){
-        exit(-1);
-    }
     _rcv_socket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
     if(_rcv_socket < 0)
     {
-        close(_send_socket);
-        exit(-1);
+        return;
     }
 
     memset(&sll, 0, sizeof(sll));
@@ -170,10 +163,10 @@ arp::arp(const char* const ifname){
     sll.sll_protocol = htons(ETH_P_ARP);
     if(bind(_rcv_socket, (sockaddr*)&sll , sizeof(sll)) == -1)
     {
-        close(_send_socket);
         close(_rcv_socket);
-        exit(-1);
+        return;
     }
+
     _worker.PeriodicTask(0, [](){
         unsigned char rx_buffer[ARP_LEN];
         sockaddr_ll remote_addr;
@@ -190,6 +183,16 @@ arp::arp(const char* const ifname){
         }
         return true;
     });
+}
+
+arp::arp(){
+
+    _send_socket = -1;
+
+    _send_socket = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ARP));
+    if(_send_socket < 0){
+        exit(-1);
+    }
 }
 
 arp::~arp(){

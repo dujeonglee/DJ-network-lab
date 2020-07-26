@@ -16,7 +16,7 @@ class arp{
 private:/*PRIVATE STATIC VARIABLE*/
     static arp* _instance;
 public:/*PUBLIC STATIC FUNCTION*/
-    static arp* instance(const char* const ifname);
+    static arp* instance();
 private:/*PRIVATE STATIC FUNCTION*/
 
 private:/*PRIVATE CLASS VARIABLE*/
@@ -38,10 +38,11 @@ public:/*PUBLIC CLASS FUNCTION*/
                     const unsigned char* const arp_tha,
                     const unsigned int arp_tpa,
                     const char* const ifname);
+    void start_rcv(const char* const ifname);
 private:/*PRIVATE CLASS FUNCTION*/
     bool hw_address(const char* const ifname, unsigned char* const hw_address);
     void print_arp(const unsigned char* const buffer);
-    arp(const char* const ifname);
+    arp();
     ~arp();
 };
 

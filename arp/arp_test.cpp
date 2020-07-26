@@ -24,8 +24,10 @@ int main(int argc, char* argv[]){
     if(argc == 3){
         sscanf(argv[1], "%hhu.%hhu.%hhu.%hhu", ((unsigned char*)&arp_tpa), ((unsigned char*)&arp_tpa)+1, ((unsigned char*)&arp_tpa)+2, ((unsigned char*)&arp_tpa)+3);
         strcpy(ifname, argv[2]);
+
+        arp::instance()->start_rcv(ifname);
         while(1) {
-            arp::instance(ifname)->garp_send(arp_tpa, ifname);
+            arp::instance()->garp_send(arp_tpa, ifname);
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }else if(argc == 13){
@@ -43,8 +45,10 @@ int main(int argc, char* argv[]){
         sscanf(argv[11], "%hhu.%hhu.%hhu.%hhu", ((unsigned char*)&arp_tpa), ((unsigned char*)&arp_tpa)+1, ((unsigned char*)&arp_tpa)+2, ((unsigned char*)&arp_tpa)+3);
 
         strcpy(ifname, argv[12]);
+
+        arp::instance()->start_rcv(ifname);
         while(1) {
-            arp::instance(ifname)->raw_arp_send(eth_dst, eth_src, ar_hrd, ar_pro, ar_hln, ar_pln, ar_op, arp_sha, arp_spa, arp_tha, arp_tpa, ifname);
+            arp::instance()->raw_arp_send(eth_dst, eth_src, ar_hrd, ar_pro, ar_hln, ar_pln, ar_op, arp_sha, arp_spa, arp_tha, arp_tpa, ifname);
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }else{
